@@ -245,7 +245,7 @@ let real = null;
 if (COURSE !== 'valley') {
   $('loading').textContent = COURSES[COURSE].loading;
   const addScript = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('missing ' + src)); document.head.append(s); });
-  const DATA = 4;          // bump when the course files change, so browsers don't reuse an old copy
+  const DATA = 5;          // bump when the course files change, so browsers don't reuse an old copy
   await addScript(`assets/${COURSE}.js?v=${DATA}`);
   await addScript(`assets/${COURSE}_osm.js?v=${DATA}`).catch(() => {});          // buildings, woods and hedges are optional
   real = window.RIDE_COURSES[COURSE];
@@ -955,7 +955,7 @@ if (XMAS) {
   const built = new Set(), cellKey = (x, z) => Math.floor(x / 10) * 4096 + Math.floor(z / 10);
   if (real) {
     for (const [bx, bz, w] of real.osm.buildings) for (let dx = -w / 2 - 4; dx <= w / 2 + 4; dx += 10) for (let dz = -w / 2 - 4; dz <= w / 2 + 4; dz += 10) built.add(cellKey(bx + dx, bz + dz));
-    for (const [x, z] of real.osm.trees) { const nr = nearRoad(x, z); if (!nr || nr.d > 5.5) spots.push([x, meshH(x, z), z]); }     // mapped street and field trees
+    for (const [x, z, tall] of real.osm.trees) { const nr = nearRoad(x, z); if ((!nr || nr.d > 5.5) && sideRoads.d(x, z) > 1) spots.push([x, meshH(x, z), z, tall]); }     // mapped or surveyed trees, at their own height where it is known
   }
   for (let n = 0; n < (real ? 320000 : 70000) && spots.length < (real ? 26000 : 7000); n++) {
     const x = (rnd() - 0.5) * TS * 0.78, z = (rnd() - 0.5) * TS * 0.78, nr = nearRoad(x, z), d = nr ? nr.d : 999;
@@ -964,6 +964,7 @@ if (XMAS) {
     const forest = fbm(x / 140 + 3, z / 140 + 7, 3);
     if (real) {            // trees where the map says there is woodland, and never on a building
       if (!real.wood(x, z) || built.has(cellKey(x, z)) || sideRoads.d(x, z) < 2.5) continue;
+      if (real.osm.surveyed && d < real.osm.surveyed) continue;       // beside the road every tree was surveyed, so none are made up there
     } else if (!(forest > 0.53 || (d < 55 && rnd() < (XMAS ? 0.42 : 0.1)))) continue;
     const y = meshH(x, z);
     if (!real && y > 240) continue;
@@ -972,8 +973,8 @@ if (XMAS) {
   const fol = new THREE.InstancedMesh(folGeo, folMat, spots.length);
   const trunk = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ color: 0x33251a, roughness: 1 }), spots.length);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new V3(0, 1, 0), sc = new V3(), ps = new V3(), col = new THREE.Color();
-  spots.forEach(([x, y, z], i) => {
-    const s = 0.9 + rnd() * 0.9;
+  spots.forEach(([x, y, z, tall], i) => {
+    const s = tall ? Math.max(0.4, Math.min(2.6, tall / 10.4)) : 0.9 + rnd() * 0.9;
     ps.set(x, y - 0.3, z); q.setFromAxisAngle(up, rnd() * 6.283); sc.set(s * (0.85 + rnd() * 0.3), s, s * (0.85 + rnd() * 0.3));
     m4.compose(ps, q, sc); fol.setMatrixAt(i, m4); trunk.setMatrixAt(i, m4);
     if (XMAS && xl.p.length < 110000 * 3) {            // fairy lights wound round the trees beside the road
@@ -1013,7 +1014,7 @@ if (xl.p.length) {         // every Christmas light is one glowing point; bright
 }
 
 /* ---------- buildings, hedges and walls (real courses) ---------- */
-if (real && real.osm.buildings.length) {
+if (real && (real.osm.buildings.length || (real.osm.hedges || []).length)) {
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new V3(0, 1, 0), sc = new V3(), ps = new V3(), col = new THREE.Color();
   const speck = (g, w, h, base, spread, n) => { for (let i = 0; i < n; i++) { const l = base + (rnd() - 0.5) * spread | 0; g.fillStyle = `rgba(${l},${l - 4},${l - 14},0.5)`; g.fillRect(rnd() * w, rnd() * h, 2 + rnd() * 5, 1 + rnd() * 2); } };
   // one bay of wall with one window; repeated across each wall so windows are never cut in half
@@ -1100,6 +1101,19 @@ if (real && real.osm.buildings.length) {
     const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2, len = Math.hypot(x2 - x1, z2 - z1);
     q.setFromAxisAngle(up, -Math.atan2(z2 - z1, x2 - x1));
     kinds[kind].setMatrixAt(n[kind]++, m4.compose(ps.set(mx, meshH(mx, mz) - 0.5, mz), q, kind ? sc.set(len + 0.3, 1.6, 0.55) : sc.set(len + 0.5, 2.1 + rnd() * 0.3, 1.3 + rnd() * 0.3)));
+  }
+  // surveyed hedges: short lengths set where the lidar found something hedge-high, turned the way the hedge runs
+  const HG = real.osm.hedges || [];
+  if (HG.length) {
+    const hm = new THREE.InstancedMesh(box, kinds[0].material, HG.length / 4); let nh = 0;
+    for (let k = 0; k < HG.length; k += 4) {
+      const x = HG[k], z = HG[k + 1], tall = HG[k + 3];
+      if (sideRoads.d(x, z) < 0.6) continue;
+      q.setFromAxisAngle(up, -HG[k + 2]);
+      hm.setMatrixAt(nh, m4.compose(ps.set(x, meshH(x, z) - 0.4, z), q, sc.set(3.3, tall + 0.4 + rnd() * 0.3, 1.9 + rnd() * 0.5)));
+      hm.setColorAt(nh++, col.setHSL(0.24 + rnd() * 0.06, 0.3, 0.42 + rnd() * 0.16));
+    }
+    hm.count = nh; hm.castShadow = true; hm.receiveShadow = true; hm.frustumCulled = false; scene.add(hm); st0.hedges = nh;
   }
   kinds.forEach((m, k) => { m.count = n[k]; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; scene.add(m); });
 }

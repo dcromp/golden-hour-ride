@@ -9,8 +9,9 @@ round Tiptree in Essex, ERG mode with structured workouts, and support for ridin
 
 - **Tiptree loop** (the default course): 14.6 km and 105 m of climbing, from Church Road in Tiptree out to Inworth and
   Messing, across towards Layer Marney Tower, and home down Newbridge Road. The ground is Environment Agency 1 m lidar;
-  the road, the side roads and junctions around it, buildings, woods and hedges are from OpenStreetMap. OpenStreetMap
-  has only some of the area's houses and hedges, so the villages are emptier than the real ones.
+  the road and the side roads and junctions around it are from OpenStreetMap. The 3,757 buildings are Ordnance Survey
+  footprints, each at the height the lidar measured for it, and the hedges and trees within 150 m of the road stand
+  where the lidar found them, at their real heights. Wall and roof colours are still guessed.
   `?course=leckhampton` and `?course=valley` open the original courses; the Course button cycles through all three.
 - **ERG mode**: the Workout button. Set your FTP, then either hold a steady wattage or ride a structured workout
   (seven are built in, and Zwift `.zwo` workout files can be added). The trainer is sent FTMS "set target power", so it
@@ -56,7 +57,7 @@ Then open http://localhost:8791/.
 
 - `index.html` – the whole ride.
 - `assets/` – textures and course data. `textures.js` is an embedded copy of the textures, used only when the page is opened straight from disk.
-- `tools/` – scripts that build the course data. To add a loop of your own, add its waypoints to `COURSES` in `tools/build_course.py`, run `python3 tools/build_course.py <name>` then `python3 tools/build_course_osm.py <name>`, and add it to `COURSES` near the top of the script in `index.html`.
+- `tools/` – scripts that build the course data. To add a loop of your own, add its waypoints to `COURSES` in `tools/build_course.py`, run `python3 tools/build_course.py <name>`, `python3 tools/build_course_osm.py <name>` and `python3 tools/build_course_surface.py <name>` (this last one wants the OS OpenMap Local shapefiles for the area unzipped into `tools/.cache/os/`; see the top of the script), and add it to `COURSES` near the top of the script in `index.html`.
 - `deploy.sh` – publishes to Spacefast.
 
 ## Credits
@@ -64,10 +65,12 @@ Then open http://localhost:8791/.
 - Textures: Poly Haven (CC0).
 - Terrain: Environment Agency LiDAR Composite DTM, Open Government Licence v3.0.
 - Roads, woodland and field boundaries: © OpenStreetMap contributors, ODbL.
+- Tiptree buildings: OS OpenMap Local. Contains Ordnance Survey data © Crown copyright and database right 2026, Open Government Licence v3.0.
+- Tiptree hedge, tree and building heights: Environment Agency LiDAR Composite first-return DSM, Open Government Licence v3.0.
 - 3D engine: Three.js (MIT), loaded from jsDelivr.
 
 ## Licence
 
 The code is released under the MIT licence: see `LICENSE`. Use it, change it, build your own ride.
 
-The MIT licence covers the code only. The course data in `assets/leckhampton.js`, `assets/leckhampton_osm.js`, `assets/tiptree.js` and `assets/tiptree_osm.js` is derived from the sources credited above and stays under their terms: the Open Government Licence v3.0 for the terrain and the ODbL for the OpenStreetMap data. If you share or adapt that data, keep those credits.
+The MIT licence covers the code only. The course data in `assets/leckhampton.js`, `assets/leckhampton_osm.js`, `assets/tiptree.js` and `assets/tiptree_osm.js` is derived from the sources credited above and stays under their terms: the Open Government Licence v3.0 for the terrain, surface heights and Ordnance Survey buildings, and the ODbL for the OpenStreetMap data. If you share or adapt that data, keep those credits.

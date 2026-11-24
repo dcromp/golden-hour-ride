@@ -19,7 +19,8 @@ round Tiptree in Essex, ERG mode with structured workouts, and support for ridin
   During free-ride steps, a pause, or after the workout, the trainer goes back to following the road's gradient.
   With no trainer connected the targets drive the ride on their own, so a workout can be tried at a desk.
 - **Cadence** on screen, read from the trainer's power service.
-- **Mini map** in the top-left corner: the loop, the roads around it, and an arrow for where you are and which way you face (north up).
+- **Mini map** in the top-left corner, north up: a close view that follows you, drawn over OpenStreetMap tiles (fetched from tile.openstreetmap.org as you ride; without a connection it falls back to the course's own road lines). Tap it to switch to the whole loop and back.
+- The Tiptree ride starts at the loop's southernmost point, by the jam factory.
 - **iPad**: the screen is kept awake, buttons are larger on touch screens, and the trainer code works in Bluefy.
 
 ## Riding on an iPad with a Wahoo KICKR CORE 2
@@ -68,6 +69,7 @@ Then open http://localhost:8791/.
 - Roads, woodland and field boundaries: © OpenStreetMap contributors, ODbL.
 - Tiptree buildings: OS OpenMap Local. Contains Ordnance Survey data © Crown copyright and database right 2026, Open Government Licence v3.0.
 - Tiptree hedge, tree and building heights: Environment Agency LiDAR Composite first-return DSM, Open Government Licence v3.0.
+- Mini map tiles: © OpenStreetMap contributors, from tile.openstreetmap.org.
 - 3D engine: Three.js (MIT), loaded from jsDelivr.
 
 ## Licence

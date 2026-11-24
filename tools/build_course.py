@@ -112,6 +112,14 @@ class Grids:
         if any(not (-500 < hh < 2000) for hh in q): return None
         return (q[0] * (1 - u) + q[1] * u) * (1 - v) + (q[2] * (1 - u) + q[3] * u) * v
 
+def geo_for(waypoints, cE, cN):
+    """Local metres back to latitude and longitude, as a straight-line fit about the middle of the course (good to a metre
+    over a few kilometres): [lat0, lon0, x0, z0, dLat/dx, dLat/dz, dLon/dx, dLon/dz]. The mini map uses it to line up map tiles."""
+    lat0, lon0 = sum(p[0] for p in waypoints) / len(waypoints), sum(p[1] for p in waypoints) / len(waypoints); h = 1e-4
+    (E0, N0), (Ea, Na), (Eb, Nb) = to_bng(lat0, lon0), to_bng(lat0 + h, lon0), to_bng(lat0, lon0 + h)
+    j11, j12, j21, j22 = (Ea - E0) / h, (Eb - E0) / h, (Na - N0) / h, (Nb - N0) / h; det = j11 * j22 - j12 * j21
+    return [round(lat0, 7), round(lon0, 7), round(E0 - cE, 2), round(-(N0 - cN), 2), j22 / det, j12 / det, -j21 / det, -j11 / det]
+
 # ---- route
 url = 'https://routing.openstreetmap.de/routed-car/route/v1/driving/' + ';'.join(f'{lon},{lat}' for lat, lon in WAYPOINTS) + '?overview=full&geometries=geojson'
 data = json.loads(get(url, 'route.json' if KEY == 'leckhampton' else f'route_{KEY}.json'))
@@ -196,7 +204,7 @@ q = struct.pack('<%dH' % len(grid), *[round((h - lo) / (hi - lo) * 65535) for h 
 
 # road line in local metres (x east, z south), a control point every 15 m
 road = [[round(line[k][0] - cE, 2), round(hts[k], 2), round(-(line[k][1] - cN), 2)] for k in range(0, len(line) - 1, 3)]
-course = {'name': CFG['name'], 'size': size, 'cells': cells, 'origin': [cE, cN], 'demMin': lo, 'demMax': hi, 'road': road,
+course = {'name': CFG['name'], 'size': size, 'cells': cells, 'origin': [cE, cN], 'geo': geo_for(WAYPOINTS, cE, cN), 'demMin': lo, 'demMax': hi, 'road': road,
           'credit': 'Route © OpenStreetMap contributors. Heights: Environment Agency LiDAR, Open Government Licence.',
           'dem': base64.b64encode(q).decode()}
 if 'quarry' in CFG: Q = to_bng(*CFG['quarry']); course['quarry'] = [round(Q[0] - cE, 1), round(-(Q[1] - cN), 1)]

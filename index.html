@@ -57,7 +57,7 @@
   #erg .btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } #erg .btns span { flex: 1; text-align: right; text-transform: none; letter-spacing: .02em; font-size: 11px; }
   @media (pointer: coarse) { #ctl button { padding: 10px 14px; font-size: 12px; } #erg button { padding: 11px 16px; font-size: 13px; } }
   @media (max-height: 520px) { #erg { bottom: 86px; } #erg canvas { height: 26px; margin: 6px 0; } }
-  #map { position: fixed; left: 18px; top: 64px; width: 190px; height: 190px; border-radius: 14px; background: rgba(20,16,12,.5); border: 1px solid rgba(255,255,255,.3); backdrop-filter: blur(6px); }
+  #map { cursor: pointer; position: fixed; left: 18px; top: 64px; width: 190px; height: 190px; border-radius: 14px; background: rgba(20,16,12,.5); border: 1px solid rgba(255,255,255,.3); backdrop-filter: blur(6px); }
   @media (max-width: 700px), (max-height: 520px) { #map { width: 130px; height: 130px; } }
   body.clean #hud, body.clean #ctl, body.clean #log, body.clean #wkp, body.clean #credit, body.clean #map { display: none; }
   body.clean #erg .btns { display: none; }
@@ -187,9 +187,9 @@ scene.add(camera);
 /* ---------- sky, sun, haze ---------- */
 // ?theme=christmas: the same valley under snow at dusk, with lights in the trees and a few chalets
 const QS = new URLSearchParams(location.search);
-// The courses built from survey data. start: metres along the loop where the ride begins. town: draw the mapped buildings beside the road.
+// The courses built from survey data. start: metres along the loop where the ride begins, or 'south' for its southernmost point. town: draw the mapped buildings beside the road.
 const COURSES = {
-  tiptree: { label: 'Tiptree', loading: 'Building the lanes round Tiptree…', start: 0, town: true },
+  tiptree: { label: 'Tiptree', loading: 'Building the lanes round Tiptree…', start: 'south', town: true },
   leckhampton: { label: 'Leckhampton', loading: 'Building Leckhampton Hill…', start: 850, town: false } };   // Leckhampton starts about 150 m below where the hill steepens; its modern town is left out
 const COURSE = QS.get('course') === 'valley' ? 'valley' : COURSES[QS.get('course')] ? QS.get('course') : QS.get('theme') === 'christmas' ? 'valley' : 'tiptree';
 const XMAS = QS.get('theme') === 'christmas' && COURSE === 'valley';
@@ -248,7 +248,7 @@ let real = null;
 if (COURSE !== 'valley') {
   $('loading').textContent = COURSES[COURSE].loading;
   const addScript = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('missing ' + src)); document.head.append(s); });
-  const DATA = 5;          // bump when the course files change, so browsers don't reuse an old copy
+  const DATA = 6;          // bump when the course files change, so browsers don't reuse an old copy
   await addScript(`assets/${COURSE}.js?v=${DATA}`);
   await addScript(`assets/${COURSE}_osm.js?v=${DATA}`).catch(() => {});          // buildings, woods and hedges are optional
   real = window.RIDE_COURSES[COURSE];
@@ -1461,7 +1461,7 @@ addEventListener('resize', () => {
 });
 
 /* ---------- input: keys, slider, smart trainer ---------- */
-const START = real ? COURSES[COURSE].start : 0;
+const START = !real ? 0 : COURSES[COURSE].start === 'south' ? P.reduce((b, p, i) => p.z > P[b].z ? i : b, 0) * LEN / N : COURSES[COURSE].start;
 const st = { s: START, v: 6, power: 220, target: 220, dist: 0, trainer: false, cadence: 0, cadAt: 0 };
 const erg = { on: false, holding: false, watts: 0 };       // filled in by the workout section below
 window.ride = st; st.haze = hazeCol; st.built = st0;
@@ -1895,35 +1895,77 @@ function startAudio() {
 }
 addEventListener('pointerdown', startAudio); addEventListener('keydown', startAudio);
 
-/* ---------- mini map: the loop, the roads around it, and where you are (north up) ---------- */
+/* ---------- mini map (north up): a close view that follows you, over OpenStreetMap tiles where the course has real
+   coordinates and the tiles can be fetched, else over the course's own road lines. Tap it for the whole loop. ---------- */
 const drawMap = (() => {
-  const cv = $('map'), g = cv.getContext('2d'), S = cv.width, [bg, b] = canvas2d(S, S);
-  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
-  for (const p of P) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
-  const k = (S - 44) / Math.max(x1 - x0, z1 - z0), mx = x => S / 2 + (x - (x0 + x1) / 2) * k, mz = z => S / 2 + (z - (z0 + z1) / 2) * k;
-  b.lineCap = b.lineJoin = 'round';
-  if (real && real.osm.roads) {                       // the other roads, faint
-    b.strokeStyle = 'rgba(255,255,255,.28)';
-    for (const [w, flat] of real.osm.roads) {
-      b.lineWidth = w > 5.5 ? 2 : 1.2; b.beginPath();
-      for (let i = 0; i < flat.length; i += 2) i ? b.lineTo(mx(flat[i]), mz(flat[i + 1])) : b.moveTo(mx(flat[i]), mz(flat[i + 1]));
-      b.stroke();
-    }
-  }
-  const loop = (style, width) => { b.strokeStyle = style; b.lineWidth = width; b.beginPath(); for (let i = 0; i < N; i += 4) i ? b.lineTo(mx(P[i].x), mz(P[i].z)) : b.moveTo(mx(P[i].x), mz(P[i].z)); b.closePath(); b.stroke(); };
-  loop('rgba(10,9,8,.55)', 9); loop('#fff', 4.5);
-  b.fillStyle = '#fff'; b.font = '600 18px -apple-system, Helvetica, Arial, sans-serif'; b.fillText('N', S - 26, 28);
-  b.beginPath(); b.moveTo(S - 20, 34); b.lineTo(S - 20, 50); b.lineWidth = 2; b.strokeStyle = '#fff'; b.stroke();
-  const place = () => { cv.style.top = Math.round($('ctl').getBoundingClientRect().bottom + 12) + 'px'; };      // sit below the buttons, however many rows they take
-  addEventListener('resize', place); place();
-  return pose => {
-    g.clearRect(0, 0, S, S); g.drawImage(bg, 0, 0);
-    const x = mx(pose.p.x), z = mz(pose.p.z), a = Math.atan2(pose.t.z, pose.t.x);
-    g.save(); g.translate(x, z); g.rotate(a);
-    g.fillStyle = '#ffb347'; g.strokeStyle = 'rgba(10,9,8,.8)'; g.lineWidth = 3;
-    g.beginPath(); g.moveTo(15, 0); g.lineTo(-9, 9); g.lineTo(-4, 0); g.lineTo(-9, -9); g.closePath(); g.stroke(); g.fill();
+  const cv = $('map'), g = cv.getContext('2d'), S = cv.width, ZOOM = 16, WORLD = 256 * 2 ** ZOOM;
+  const geo = real && real.geo;                       // [lat0, lon0, x0, z0, dLat/dx, dLat/dz, dLon/dx, dLon/dz]
+  // a point on the course in map pixels: web-mercator pixels at ZOOM (about 1.5 m each here), or plain metres at the same scale
+  const toMap = geo ? (x, z) => {
+    const lat = (geo[0] + geo[4] * (x - geo[2]) + geo[5] * (z - geo[3])) * Math.PI / 180, lon = geo[1] + geo[6] * (x - geo[2]) + geo[7] * (z - geo[3]);
+    return [(lon + 180) / 360 * WORLD, (1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2 * WORLD];
+  } : (x, z) => [x / 1.5, z / 1.5];
+  const line = flat => { const a = new Float64Array(flat.length); for (let i = 0; i < flat.length; i += 2) a.set(toMap(flat[i], flat[i + 1]), i); return a; };
+  const route = line(P.filter((_, i) => i % 3 === 0).flatMap(p => [p.x, p.z]));
+  const others = real && real.osm.roads ? real.osm.roads.map(([w, flat]) => [w, line(flat)]) : [];
+  const path = (c, a, ox, oy, k) => { c.beginPath(); for (let i = 0; i < a.length; i += 2) i ? c.lineTo((a[i] - ox) * k, (a[i + 1] - oy) * k) : c.moveTo((a[i] - ox) * k, (a[i + 1] - oy) * k); };
+  const arrow = (x, y, t) => {
+    g.save(); g.translate(x, y); g.rotate(Math.atan2(t.z, t.x));
+    g.fillStyle = '#ff8a1f'; g.strokeStyle = '#fff'; g.lineWidth = 4; g.lineJoin = 'round';
+    g.beginPath(); g.moveTo(17, 0); g.lineTo(-11, 11); g.lineTo(-5, 0); g.lineTo(-11, -11); g.closePath(); g.stroke(); g.fill();
     g.restore();
   };
+
+  // the whole loop, drawn once
+  let x0 = 1e99, x1 = -1e99, y0 = 1e99, y1 = -1e99;
+  for (let i = 0; i < route.length; i += 2) { x0 = Math.min(x0, route[i]); x1 = Math.max(x1, route[i]); y0 = Math.min(y0, route[i + 1]); y1 = Math.max(y1, route[i + 1]); }
+  const ok = (S - 44) / Math.max(x1 - x0, y1 - y0), oox = (x0 + x1) / 2 - S / 2 / ok, ooy = (y0 + y1) / 2 - S / 2 / ok, [bg, b] = canvas2d(S, S);
+  b.lineCap = b.lineJoin = 'round'; b.strokeStyle = 'rgba(255,255,255,.28)';
+  for (const [w, a] of others) { b.lineWidth = w > 5.5 ? 2 : 1.2; path(b, a, oox, ooy, ok); b.stroke(); }
+  for (const [style, width] of [['rgba(10,9,8,.55)', 9], ['#fff', 4.5]]) { b.strokeStyle = style; b.lineWidth = width; path(b, route, oox, ooy, ok); b.closePath(); b.stroke(); }
+
+  // map tiles, fetched as you reach them and kept for the ride
+  const tiles = new Map();
+  const tile = (tx, ty) => {
+    const key = tx + '/' + ty; let t = tiles.get(key);
+    if (!t) {
+      if (tiles.size > 400) tiles.clear();
+      t = new Image(); t.onload = () => { t.ready = true; }; t.src = `https://tile.openstreetmap.org/${ZOOM}/${key}.png`; tiles.set(key, t);
+    }
+    return t.ready ? t : null;
+  };
+
+  let whole = false;
+  try { whole = localStorage.getItem('golden-hour-ride-map') === 'whole'; } catch {}
+  cv.addEventListener('click', e => { if (isClean()) return; e.stopPropagation(); whole = !whole; try { localStorage.setItem('golden-hour-ride-map', whole ? 'whole' : 'close'); } catch {} last && draw(last); });
+  const place = () => { cv.style.top = Math.round($('ctl').getBoundingClientRect().bottom + 12) + 'px'; };      // sit below the buttons, however many rows they take
+  addEventListener('resize', place); place();
+
+  let last = null;
+  function draw(pose) {
+    last = pose;
+    const [cx, cy] = toMap(pose.p.x, pose.p.z);
+    g.clearRect(0, 0, S, S);
+    if (whole) { g.drawImage(bg, 0, 0); arrow((cx - oox) * ok, (cy - ooy) * ok, pose.t); return; }
+    const ox = cx - S / 2, oy = cy - S / 2; let got = 0, want = 0;
+    g.lineCap = g.lineJoin = 'round';
+    if (geo) for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + S) / 256); tx++) for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + S) / 256); ty++) {
+      const t = tile(tx, ty); want++;
+      if (t) { g.drawImage(t, Math.round(tx * 256 - ox), Math.round(ty * 256 - oy)); got++; }
+    }
+    if (got < want) {                                 // no tiles (yet), or an invented course: the course's own roads
+      g.strokeStyle = got ? 'rgba(90,90,90,.5)' : 'rgba(255,255,255,.4)';
+      for (const [w, a] of others) { g.lineWidth = Math.max(3, w / 1.5); path(g, a, ox, oy, 1); g.stroke(); }
+    }
+    g.strokeStyle = got ? 'rgba(255,255,255,.9)' : 'rgba(10,9,8,.55)'; g.lineWidth = 11; path(g, route, ox, oy, 1); g.closePath(); g.stroke();
+    g.strokeStyle = got ? '#2b6fe6' : '#fff'; g.lineWidth = 6; path(g, route, ox, oy, 1); g.closePath(); g.stroke();
+    arrow(S / 2, S / 2, pose.t);
+    if (got) {                                        // the tiles' credit, as their licence asks
+      g.font = '500 17px -apple-system, Helvetica, Arial, sans-serif'; const label = '© OpenStreetMap', w = g.measureText(label).width;
+      g.fillStyle = 'rgba(255,255,255,.75)'; g.fillRect(S - w - 14, S - 26, w + 14, 26); g.fillStyle = '#333'; g.fillText(label, S - w - 7, S - 8);
+    }
+  }
+  return draw;
 })();
 
 /* ---------- ride ---------- */

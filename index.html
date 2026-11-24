@@ -57,7 +57,9 @@
   #erg .btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } #erg .btns span { flex: 1; text-align: right; text-transform: none; letter-spacing: .02em; font-size: 11px; }
   @media (pointer: coarse) { #ctl button { padding: 10px 14px; font-size: 12px; } #erg button { padding: 11px 16px; font-size: 13px; } }
   @media (max-height: 520px) { #erg { bottom: 86px; } #erg canvas { height: 26px; margin: 6px 0; } }
-  body.clean #hud, body.clean #ctl, body.clean #log, body.clean #wkp, body.clean #credit { display: none; }
+  #map { position: fixed; left: 18px; top: 64px; width: 190px; height: 190px; border-radius: 14px; background: rgba(20,16,12,.5); border: 1px solid rgba(255,255,255,.3); backdrop-filter: blur(6px); }
+  @media (max-width: 700px), (max-height: 520px) { #map { width: 130px; height: 130px; } }
+  body.clean #hud, body.clean #ctl, body.clean #log, body.clean #wkp, body.clean #credit, body.clean #map { display: none; }
   body.clean #erg .btns { display: none; }
   body.clean { cursor: none; }
   #credit { position: fixed; right: 14px; bottom: 10px; font-size: 10px; letter-spacing: .04em; opacity: .7; text-shadow: 0 1px 6px rgba(0,0,0,.7); max-width: 46vw; text-align: right; }
@@ -92,6 +94,7 @@
   <button id="clean" title="Hide everything on screen (H key, or say “hide”). Press H, click, or say “show” to bring it back">Hide info</button>
   <button id="logbtn" title="Distance you have ridden, kept in this browser">Log</button>
 </div>
+<canvas id="map" width="380" height="380" aria-label="Map of the course with your position"></canvas>
 <div id="log" hidden></div>
 <div id="wkp" hidden></div>
 <div id="erg" hidden>
@@ -1892,6 +1895,37 @@ function startAudio() {
 }
 addEventListener('pointerdown', startAudio); addEventListener('keydown', startAudio);
 
+/* ---------- mini map: the loop, the roads around it, and where you are (north up) ---------- */
+const drawMap = (() => {
+  const cv = $('map'), g = cv.getContext('2d'), S = cv.width, [bg, b] = canvas2d(S, S);
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (const p of P) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+  const k = (S - 44) / Math.max(x1 - x0, z1 - z0), mx = x => S / 2 + (x - (x0 + x1) / 2) * k, mz = z => S / 2 + (z - (z0 + z1) / 2) * k;
+  b.lineCap = b.lineJoin = 'round';
+  if (real && real.osm.roads) {                       // the other roads, faint
+    b.strokeStyle = 'rgba(255,255,255,.28)';
+    for (const [w, flat] of real.osm.roads) {
+      b.lineWidth = w > 5.5 ? 2 : 1.2; b.beginPath();
+      for (let i = 0; i < flat.length; i += 2) i ? b.lineTo(mx(flat[i]), mz(flat[i + 1])) : b.moveTo(mx(flat[i]), mz(flat[i + 1]));
+      b.stroke();
+    }
+  }
+  const loop = (style, width) => { b.strokeStyle = style; b.lineWidth = width; b.beginPath(); for (let i = 0; i < N; i += 4) i ? b.lineTo(mx(P[i].x), mz(P[i].z)) : b.moveTo(mx(P[i].x), mz(P[i].z)); b.closePath(); b.stroke(); };
+  loop('rgba(10,9,8,.55)', 9); loop('#fff', 4.5);
+  b.fillStyle = '#fff'; b.font = '600 18px -apple-system, Helvetica, Arial, sans-serif'; b.fillText('N', S - 26, 28);
+  b.beginPath(); b.moveTo(S - 20, 34); b.lineTo(S - 20, 50); b.lineWidth = 2; b.strokeStyle = '#fff'; b.stroke();
+  const place = () => { cv.style.top = Math.round($('ctl').getBoundingClientRect().bottom + 12) + 'px'; };      // sit below the buttons, however many rows they take
+  addEventListener('resize', place); place();
+  return pose => {
+    g.clearRect(0, 0, S, S); g.drawImage(bg, 0, 0);
+    const x = mx(pose.p.x), z = mz(pose.p.z), a = Math.atan2(pose.t.z, pose.t.x);
+    g.save(); g.translate(x, z); g.rotate(a);
+    g.fillStyle = '#ffb347'; g.strokeStyle = 'rgba(10,9,8,.8)'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(15, 0); g.lineTo(-9, 9); g.lineTo(-4, 0); g.lineTo(-9, -9); g.closePath(); g.stroke(); g.fill();
+    g.restore();
+  };
+})();
+
 /* ---------- ride ---------- */
 const MASS = 80, LANE = -1.75, clock = new THREE.Clock();
 const pose = mkPose(), ahead = mkPose(), probe = mkPose(), look = new V3(), sunNdc = new V3(), fwd = new V3();
@@ -1965,7 +1999,7 @@ function tick() {
   huT -= dt;
   if (huT <= 0) {
     huT = 0.25;
-    drawHeadUnit(st.v * 3.6, st.power);
+    drawHeadUnit(st.v * 3.6, st.power); drawMap(pose);
     $('h-pw').textContent = st.power.toFixed(0);
     $('h-cd').textContent = st.trainer && st.cadence > 0 ? st.cadence.toFixed(0) : '–';
     $('h-sp').textContent = (st.v * 3.6).toFixed(1);

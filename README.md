@@ -19,6 +19,7 @@ round Tiptree in Essex, ERG mode with structured workouts, and support for ridin
   During free-ride steps, a pause, or after the workout, the trainer goes back to following the road's gradient.
   With no trainer connected the targets drive the ride on their own, so a workout can be tried at a desk.
 - **Cadence** on screen, read from the trainer's power service.
+- **Mini map** in the top-left corner: the loop, the roads around it, and an arrow for where you are and which way you face (north up).
 - **iPad**: the screen is kept awake, buttons are larger on touch screens, and the trainer code works in Bluefy.
 
 ## Riding on an iPad with a Wahoo KICKR CORE 2

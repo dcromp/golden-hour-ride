@@ -37,7 +37,28 @@
   #log td:last-child { text-align: right; }
   #log .muted { opacity: .65; }
   #log button { margin-top: 12px; font: inherit; font-size: 11px; color: #fff; background: none; border: 1px solid rgba(255,255,255,.35); border-radius: 999px; padding: 4px 10px; cursor: pointer; }
-  body.clean #hud, body.clean #ctl, body.clean #log, body.clean #credit { display: none; }
+  #wkp { position: fixed; top: 64px; right: 18px; width: 330px; max-width: calc(100vw - 36px); box-sizing: border-box; max-height: calc(100vh - 90px); overflow: auto; padding: 14px 16px; border-radius: 14px;
+    background: rgba(20,16,12,.78); border: 1px solid rgba(255,255,255,.3); backdrop-filter: blur(8px); font-size: 13px; color: #fff; -webkit-overflow-scrolling: touch; }
+  #wkp h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; opacity: .75; }
+  #wkp .row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  #wkp input[type=number] { width: 64px; font: inherit; font-size: 16px; color: #fff; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.35); border-radius: 8px; padding: 6px 8px; }
+  #wkp button, #wkp label.btn, #erg button { font: inherit; font-size: 12px; color: #fff; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.35); border-radius: 999px; padding: 8px 13px; cursor: pointer; }
+  #wkp .wk { display: block; width: 100%; text-align: left; border-radius: 12px; margin-bottom: 8px; padding: 9px 12px; }
+  #wkp .wk b { font-weight: 600; } #wkp .wk span { float: right; opacity: .7; } #wkp .wk canvas { display: block; width: 100%; height: 30px; margin-top: 7px; }
+  #wkp .wk i { display: block; font-style: normal; font-size: 11px; opacity: .7; margin-top: 3px; }
+  #wkp .muted { opacity: .65; font-size: 11px; line-height: 1.4; }
+  #erg { position: fixed; left: 50%; transform: translateX(-50%); bottom: 104px; width: 560px; max-width: calc(100vw - 36px); box-sizing: border-box; padding: 12px 16px; border-radius: 16px;
+    background: rgba(20,16,12,.62); border: 1px solid rgba(255,255,255,.3); backdrop-filter: blur(8px); font-variant-numeric: tabular-nums; }
+  #erg .top { display: flex; align-items: flex-end; gap: 18px; }
+  #erg .top div { min-width: 74px; } #erg .top div.grow { flex: 1; min-width: 0; text-align: right; }
+  #erg b { display: block; font-size: 30px; font-weight: 300; } #erg span { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .75; }
+  #erg #e-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; letter-spacing: .04em; text-transform: none; opacity: .9; }
+  #erg canvas { display: block; width: 100%; height: 44px; margin: 10px 0; }
+  #erg .btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } #erg .btns span { flex: 1; text-align: right; text-transform: none; letter-spacing: .02em; font-size: 11px; }
+  @media (pointer: coarse) { #ctl button { padding: 10px 14px; font-size: 12px; } #erg button { padding: 11px 16px; font-size: 13px; } }
+  @media (max-height: 520px) { #erg { bottom: 86px; } #erg canvas { height: 26px; margin: 6px 0; } }
+  body.clean #hud, body.clean #ctl, body.clean #log, body.clean #wkp, body.clean #credit { display: none; }
+  body.clean #erg .btns { display: none; }
   body.clean { cursor: none; }
   #credit { position: fixed; right: 14px; bottom: 10px; font-size: 10px; letter-spacing: .04em; opacity: .7; text-shadow: 0 1px 6px rgba(0,0,0,.7); max-width: 46vw; text-align: right; }
 </style>
@@ -52,6 +73,7 @@
 <canvas id="c"></canvas>
 <div id="hud">
   <div><b id="h-pw">220</b><span>watts</span></div>
+  <div><b id="h-cd">–</b><span>rpm</span></div>
   <div><b id="h-sp">0.0</b><span>km/h</span></div>
   <div><b id="h-gr">0.0</b><span>gradient %</span></div>
   <div><b id="h-di">0.00</b><span>km</span></div>
@@ -62,16 +84,32 @@
   <span>↑ ↓ keys</span>
   <button id="skip" title="Jump 250 m up the road (→ key; ← goes back)">Skip 250 m ›</button>
   <button id="voice" title="Say: rain, mist, overcast, sunny, skip, back, hide or show. For a smart trainer: easier or gear down, harder or gear up, flat, full">Voice: off</button>
-  <button id="course" title="Switch between the invented valley and the real Leckhampton Hill loop">Course</button>
+  <button id="course" title="Switch between the Tiptree loop, the Leckhampton Hill loop and the invented valley">Course</button>
   <span id="wx"><button data-w="snow">Snow</button><button data-w="golden" class="on">Golden</button><button data-w="overcast">Overcast</button><button data-w="rain">Rain</button><button data-w="mist">Mist</button><button data-w="starry">Starry</button></span>
   <button id="bt">Connect trainer</button>
+  <button id="wk" title="ERG mode: the trainer holds a target power for you, on its own or through a structured workout">Workout</button>
   <span id="hills" title="How much of each hill a smart trainer makes you feel. Turn it down if the climbs are too hard; 0 % is flat."><button id="hless" aria-label="Make hills easier">−</button><span id="hval">Hills 50 %</span><button id="hmore" aria-label="Make hills harder">+</button></span>
   <button id="clean" title="Hide everything on screen (H key, or say “hide”). Press H, click, or say “show” to bring it back">Hide info</button>
   <button id="logbtn" title="Distance you have ridden, kept in this browser">Log</button>
 </div>
 <div id="log" hidden></div>
+<div id="wkp" hidden></div>
+<div id="erg" hidden>
+  <div class="top">
+    <div><b id="e-tg">0</b><span>target watts</span></div>
+    <div><b id="e-st">0:00</b><span id="e-stl">this step</span></div>
+    <div><b id="e-tot">0:00</b><span>to go</span></div>
+    <div class="grow"><span id="e-name"></span><span id="e-next"></span></div>
+  </div>
+  <canvas id="e-cv" width="1120" height="88"></canvas>
+  <div class="btns">
+    <button id="e-less" aria-label="Lower the target">−</button><button id="e-more" aria-label="Raise the target">+</button>
+    <button id="e-pause">Pause</button><button id="e-skip">Skip step</button><button id="e-end">End</button>
+    <span id="e-msg"></span>
+  </div>
+</div>
 <div id="credit"></div>
-<div id="loading">Building the valley…</div>
+<div id="loading">Building the ride…</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -145,7 +183,13 @@ scene.add(camera);
 
 /* ---------- sky, sun, haze ---------- */
 // ?theme=christmas: the same valley under snow at dusk, with lights in the trees and a few chalets
-const XMAS = new URLSearchParams(location.search).get('theme') === 'christmas' && new URLSearchParams(location.search).get('course') !== 'leckhampton';
+const QS = new URLSearchParams(location.search);
+// The courses built from survey data. start: metres along the loop where the ride begins. town: draw the mapped buildings beside the road.
+const COURSES = {
+  tiptree: { label: 'Tiptree', loading: 'Building the lanes round Tiptree…', start: 0, town: true },
+  leckhampton: { label: 'Leckhampton', loading: 'Building Leckhampton Hill…', start: 850, town: false } };   // Leckhampton starts about 150 m below where the hill steepens; its modern town is left out
+const COURSE = QS.get('course') === 'valley' ? 'valley' : COURSES[QS.get('course')] ? QS.get('course') : QS.get('theme') === 'christmas' ? 'valley' : 'tiptree';
+const XMAS = QS.get('theme') === 'christmas' && COURSE === 'valley';
 const SUN_ELEV = XMAS ? 4.5 : 11, SUN_AZ = -24;
 const sunDir = new V3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - SUN_ELEV), THREE.MathUtils.degToRad(SUN_AZ));
 const sunFlat = new V3(sunDir.x, 0, sunDir.z).normalize();
@@ -194,15 +238,14 @@ const hemi = new THREE.HemisphereLight(XMAS ? 0xa6b4ea : 0xa9b8ee, XMAS ? 0x9aa2
 scene.add(hemi);
 
 /* ---------- course: the invented valley, or a real road built from survey data ---------- */
-const COURSE = new URLSearchParams(location.search).get('course') === 'leckhampton' ? 'leckhampton' : 'valley';
 // Scenery mode (?scenery): the ride drifts along on its own at a gentle pace with nothing on screen and the weather
 // slowly changing, for leaving on in the background. ?scenery=nobars also hides the handlebars.
-const SCENERY = new URLSearchParams(location.search).get('scenery');
+const SCENERY = QS.get('scenery');
 let real = null;
 if (COURSE !== 'valley') {
-  $('loading').textContent = 'Building Leckhampton Hill…';
+  $('loading').textContent = COURSES[COURSE].loading;
   const addScript = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('missing ' + src)); document.head.append(s); });
-  const DATA = 3;          // bump when the course files change, so browsers don't reuse an old copy
+  const DATA = 4;          // bump when the course files change, so browsers don't reuse an old copy
   await addScript(`assets/${COURSE}.js?v=${DATA}`);
   await addScript(`assets/${COURSE}_osm.js?v=${DATA}`).catch(() => {});          // buildings, woods and hedges are optional
   real = window.RIDE_COURSES[COURSE];
@@ -217,8 +260,9 @@ if (COURSE !== 'valley') {
   real.h = Float32Array.from(q, v => real.demMin + v / 65535 * (real.demMax - real.demMin));     // surveyed ground heights, metres
   $('credit').textContent = real.credit + ' ' + real.osm.credit;
 }
-$('course').textContent = real ? 'Course: Leckhampton' : 'Course: Valley';
-$('course').addEventListener('click', () => { location.search = real ? '' : '?course=leckhampton'; });
+const courseName = c => COURSES[c] ? COURSES[c].label : 'Valley';
+$('course').textContent = 'Course: ' + courseName(COURSE);
+$('course').addEventListener('click', () => { const all = ['tiptree', 'leckhampton', 'valley']; location.search = '?course=' + all[(all.indexOf(COURSE) + 1) % all.length]; });
 function demH(x, z) {                 // the real ground under a point
   const g = real.cells, w = g + 1, f = v => Math.min(g - 1e-6, Math.max(0, (v + real.size / 2) / (real.size / g)));
   const fx = f(x), fz = f(z), ix = Math.floor(fx), iz = Math.floor(fz), u = fx - ix, v = fz - iz, h = real.h;
@@ -495,6 +539,58 @@ for (const g of [strip(-6.8, -0.72, -3.5, 0.005, 1, 0, LEN / 5), strip(3.5, 0.00
   const m = new THREE.Mesh(g, shoulderMat); m.receiveShadow = true; scene.add(m);
 }
 
+/* ---------- the rest of the road network (real courses): side roads and junctions, laid over the ground ---------- */
+const sideRoads = { cells: new Map(), d: () => 99 };
+if (real && real.osm.roads && real.osm.roads.length) {
+  const pos = [], uv = [], idx = [], SC = 12, key = (cx, cz) => cx * 8192 + cz, cells = sideRoads.cells;
+  const lift = (x, z, nx, nz, hw) => {             // on the ground, rising to meet the ridden road where they join
+    const g = Math.max(meshH(x, z), meshH(x + nx * hw, z + nz * hw), meshH(x - nx * hw, z - nz * hw)) + 0.12, n = nearRoad(x, z);
+    if (!n || n.d > 30) return g;
+    const k = smooth(3.5, 18, n.d);
+    return (n.y - 0.04) * (1 - k) + g * k;
+  };
+  const ribbon = (run, w) => {
+    const hw = w / 2, base = pos.length / 3; let dist = 0;
+    run.forEach(([x, z], i) => {
+      const a = run[Math.max(0, i - 1)], b = run[Math.min(run.length - 1, i + 1)], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / L, nz = (b[0] - a[0]) / L;
+      if (i) dist += Math.hypot(x - run[i - 1][0], z - run[i - 1][1]);
+      const y = lift(x, z, nx, nz, hw);
+      pos.push(x - nx * hw, y, z - nz * hw, x + nx * hw, y, z + nz * hw); uv.push(0, dist / 3, w / 3, dist / 3);
+      if (i) { const v = base + i * 2; idx.push(v - 2, v, v - 1, v - 1, v, v + 1); }
+      const k = key(Math.floor(x / SC), Math.floor(z / SC)); (cells.get(k) || cells.set(k, []).get(k)).push(x, z, hw);
+    });
+  };
+  for (const [w, flat] of real.osm.roads) {
+    const pts = []; let carry = 0;                  // a point every 4 m
+    for (let k = 0; k + 3 < flat.length; k += 2) {
+      const ax = flat[k], az = flat[k + 1], bx = flat[k + 2], bz = flat[k + 3], L = Math.hypot(bx - ax, bz - az);
+      if (!L) continue;
+      let d = carry; for (; d < L; d += 4) pts.push([ax + (bx - ax) * d / L, az + (bz - az) * d / L]);
+      carry = d - L;
+    }
+    pts.push([flat[flat.length - 2], flat[flat.length - 1]]);
+    let run = [];
+    const flush = () => { if (run.length > 1) ribbon(run, w); run = []; };
+    for (const p of pts) { const n = nearRoad(p[0], p[1]); if (n && n.d < 2.6) flush(); else run.push(p); }     // the ridden road is drawn already
+    flush();
+  }
+  // how far a point is from the edge of the nearest side road (99 when none is close)
+  sideRoads.d = (x, z) => {
+    const cx = Math.floor(x / SC), cz = Math.floor(z / SC); let best = 99;
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const a = cells.get(key(cx + dx, cz + dz)); if (!a) continue;
+      for (let k = 0; k < a.length; k += 3) best = Math.min(best, Math.hypot(a[k] - x, a[k + 1] - z) - a[k + 2]);
+    }
+    return best;
+  };
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+  const map = imgTex(imgAsphalt, true);
+  const lanes = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map, color: 0xb9b9bd, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+  lanes.receiveShadow = true; scene.add(lanes);
+  st0.sideRoadKm = +(idx.length / 6 * 4 / 1000).toFixed(1);
+}
+
 /* ---------- grass along the verge (chunks, only the near ones are drawn) ---------- */
 const uTime = { value: 0 }, uCloud = { value: 1 }, uMote = { value: 1 }, uMeadow = { value: new THREE.Vector2() }, uSunAmt = { value: 1 };
 function grassTex() {
@@ -538,6 +634,7 @@ const chunks = [];
       if (d < 6.8) y = Math.max(y, P[i].y + T[i].y * j - 0.72 * (d - 3.5) / 3.3);
       const tall = 0.28 + rnd() * 0.5 + (d > 5 ? rnd() * 0.25 : 0);
       ps.set(x, y - 0.03, z); q.setFromAxisAngle(up, rnd() * 6.283); sc.set(0.5 + rnd() * 0.5, tall, 0.5 + rnd() * 0.5);
+      if (sideRoads.d(x, z) < 0.4) sc.setScalar(0);              // no grass growing through a junction
       mesh.setMatrixAt(k, m4.compose(ps, q, sc));
       mesh.setColorAt(k, col.setHSL(0.19 + rnd() * 0.07, 0.25 + rnd() * 0.25, 0.5 + rnd() * 0.25));
     }
@@ -620,6 +717,9 @@ if (real) {
   for (let k = 0; k < TW * TW; k++) {             // per terrain vertex: height, distance to road, rock/snow, dryness
     const nr = nearRoad(tPos[k * 3], tPos[k * 3 + 2]);
     data.set([H[k], nr ? Math.min(nr.d, 100) : 100, Math.max(mix[k * 2], mix[k * 2 + 1]), smooth(0.3, 0.7, fbm(tPos[k * 3] / 45, tPos[k * 3 + 2] / 45, 3))], k * 4);
+  }
+  if (sideRoads.cells.size) for (let k = 0; k < TW * TW; k++) {             // no meadow on the other roads
+    const d = sideRoads.d(tPos[k * 3], tPos[k * 3 + 2]); if (d < TC * 0.75) data[k * 4 + 2] = Math.max(data[k * 4 + 2], smooth(TC * 0.75, TC * 0.2, d));
   }
   for (const s of stamps) {            // grazed pasture and stubble: shorter grass, or none
     const i0 = Math.round((s.x + TS / 2) / TC), j0 = Math.round((s.z + TS / 2) / TC), n = Math.ceil(s.r / TC);
@@ -863,7 +963,7 @@ if (XMAS) {
     if (chalets.some(c => (c[0] - x) ** 2 + (c[1] - z) ** 2 < 170)) continue;
     const forest = fbm(x / 140 + 3, z / 140 + 7, 3);
     if (real) {            // trees where the map says there is woodland, and never on a building
-      if (!real.wood(x, z) || built.has(cellKey(x, z))) continue;
+      if (!real.wood(x, z) || built.has(cellKey(x, z)) || sideRoads.d(x, z) < 2.5) continue;
     } else if (!(forest > 0.53 || (d < 55 && rnd() < (XMAS ? 0.42 : 0.1)))) continue;
     const y = meshH(x, z);
     if (!real && y > 240) continue;
@@ -919,6 +1019,10 @@ if (real && real.osm.buildings.length) {
   // one bay of wall with one window; repeated across each wall so windows are never cut in half
   const [wc, wg] = canvas2d(128, 128);
   wg.fillStyle = '#d9d2c2'; wg.fillRect(0, 0, 128, 128); speck(wg, 128, 128, 205, 50, 900);
+  if (COURSES[COURSE].town) {                  // faint brick courses, so a tinted wall reads as brick or painted brick
+    wg.fillStyle = 'rgba(60,50,40,0.16)';
+    for (let y = 0; y < 128; y += 4) { wg.fillRect(0, y, 128, 1); for (let x = (y / 4 % 2) * 5; x < 128; x += 10) wg.fillRect(x, y, 1, 4); }
+  }
   wg.fillStyle = '#efebe0'; wg.fillRect(40, 30, 48, 64);
   wg.fillStyle = '#27303a'; wg.fillRect(44, 34, 40, 56);
   wg.fillStyle = '#efebe0'; wg.fillRect(63, 34, 2, 56); wg.fillRect(44, 61, 40, 2); wg.fillRect(36, 94, 56, 5);
@@ -938,11 +1042,24 @@ if (real && real.osm.buildings.length) {
     -.5, 0, -.5, -.5, 0, .5, -.25, 1, 0,   .5, 0, .5, .5, 0, -.5, .25, 1, 0], 3));
   hip.computeVertexNormals();
   const B = real.osm.buildings, box = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-  const roofMat = new THREE.MeshStandardMaterial({ roughness: 0.8 });
+  const roofMat = new THREE.MeshStandardMaterial({ roughness: 0.8, side: THREE.DoubleSide });
   const walls = new THREE.InstancedMesh(box, wallMat, B.length), pitched = new THREE.InstancedMesh(hip, roofMat, B.length), flat = new THREE.InstancedMesh(box, roofMat, B.length);
-  let np = 0, nf = 0, nw = 0;
-  const SHOW_TOWN = false;     // 19th-century Leckhampton: a village among fields, so the modern town is left out
-  const KEEP_OUT = 150;        // simple house shapes only hold up at a distance, so none are drawn near the road
+  // a gabled roof: two slopes to a ridge along the building, the triangular end walls, and a chimney on the ridge
+  const gab = new THREE.BufferGeometry();
+  gab.setAttribute('position', new THREE.Float32BufferAttribute([-.5, 0, -.5, -.5, 1, 0, .5, 1, 0,  -.5, 0, -.5, .5, 1, 0, .5, 0, -.5,  -.5, 0, .5, .5, 0, .5, .5, 1, 0,  -.5, 0, .5, .5, 1, 0, -.5, 1, 0], 3));
+  gab.computeVertexNormals();
+  const ends = new THREE.BufferGeometry();
+  ends.setAttribute('position', new THREE.Float32BufferAttribute([-.5, 0, .5, -.5, 1, 0, -.5, 0, -.5,  .5, 0, -.5, .5, 1, 0, .5, 0, .5], 3));
+  ends.computeVertexNormals();
+  const plainMat = new THREE.MeshStandardMaterial({ roughness: 0.95, side: THREE.DoubleSide });
+  const gabled = new THREE.InstancedMesh(gab, roofMat, B.length), gableEnds = new THREE.InstancedMesh(ends, plainMat, B.length), stacks = new THREE.InstancedMesh(box, plainMat, B.length);
+  // north Essex: red and yellow stock brick, cream and white render, a little black weatherboard; clay tile and slate above
+  const WALLS = [[0.03, 0.5, 0.42, 5], [0.045, 0.42, 0.48, 3], [0.1, 0.42, 0.62, 3], [0.12, 0.3, 0.86, 3], [0.1, 0.08, 0.92, 2], [0.0, 0.0, 0.16, 1], [0.02, 0.35, 0.8, 1]];
+  const ROOFS = [[0.04, 0.5, 0.3, 5], [0.06, 0.32, 0.24, 3], [0.6, 0.07, 0.24, 3]];
+  const pick = list => { let r = rnd() * list.reduce((a, c) => a + c[3], 0); for (const c of list) if ((r -= c[3]) <= 0) return c; return list[0]; };
+  let np = 0, nf = 0, nw = 0, ng = 0, ns = 0;
+  const SHOW_TOWN = COURSES[COURSE].town;     // 19th-century Leckhampton is a village among fields, so its modern town is left out
+  const KEEP_OUT = SHOW_TOWN ? 0 : 150;       // simple house shapes hold up best at a distance; a course that rides through its villages draws them all
   const farFromRoad = (x, z) => { for (let k = 0; k < N; k += 8) { const ex = P[k].x - x, ez = P[k].z - z; if (ex * ex + ez * ez < KEEP_OUT * KEEP_OUT) return false; } return true; };
   B.forEach(([x, z, w, d, ang, h, roof]) => {
     if (!SHOW_TOWN || !farFromRoad(x, z)) return;
@@ -952,13 +1069,24 @@ if (real && real.osm.buildings.length) {
     for (const [u, v] of [[0, 0], [w / 2, d / 2], [w / 2, -d / 2], [-w / 2, d / 2], [-w / 2, -d / 2]]) { const y = meshH(x + u * c - v * sn, z + u * sn + v * c); lo = Math.min(lo, y); hi = Math.max(hi, y); }
     q.setFromAxisAngle(up, -ang);
     walls.setMatrixAt(i, m4.compose(ps.set(x, lo - 0.4, z), q, sc.set(w, h + hi - lo + 0.4, d)));
-    walls.setColorAt(i, col.setHSL(0.1, 0.2, 0.56 + rnd() * 0.08));                // one muted stone, so the town reads as a single mass
-    const slate = col.setHSL(0.6, 0.06, 0.2 + rnd() * 0.06);
+    const wc = pick(WALLS), rc = pick(ROOFS), jit = (rnd() - 0.5) * 0.06;
+    walls.setColorAt(i, col.setHSL(wc[0], wc[1], wc[2] + jit));
+    if (roof && w < 26 && rnd() < 0.72) {            // most houses: a gable roof, pitched at about 40 degrees
+      const rise = Math.min(4.6, d * 0.42);
+      gabled.setMatrixAt(ng, m4.compose(ps.set(x, hi + h, z), q, sc.set(w + 0.5, rise, d + 0.9))); gabled.setColorAt(ng, col.setHSL(rc[0], rc[1], rc[2] + jit));
+      gableEnds.setMatrixAt(ng, m4.compose(ps.set(x, hi + h, z), q, sc.set(w, rise, d))); gableEnds.setColorAt(ng++, col.setHSL(wc[0], wc[1], wc[2] * 0.82 + jit));
+      if (rnd() < 0.8) {
+        const u = (rnd() < 0.5 ? -1 : 1) * (w / 2 - 0.9);
+        stacks.setMatrixAt(ns, m4.compose(ps.set(x + u * c, hi + h + rise - 0.9, z + u * sn), q, sc.set(0.95, 2.1, 0.6))); stacks.setColorAt(ns++, col.setHSL(0.03, 0.45, 0.3));
+      }
+      return;
+    }
+    const slate = col.setHSL(rc[0], rc[1], rc[2] + jit);
     if (roof) { pitched.setMatrixAt(np, m4.compose(ps.set(x, hi + h, z), q, sc.set(w + 0.8, Math.min(3.4, d * 0.34), d + 0.8))); pitched.setColorAt(np++, slate); }
     else { flat.setMatrixAt(nf, m4.compose(ps.set(x, hi + h, z), q, sc.set(w + 0.3, 0.3, d + 0.3))); flat.setColorAt(nf++, slate); }
   });
-  walls.count = nw; pitched.count = np; flat.count = nf;
-  for (const m of [walls, pitched, flat]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; scene.add(m); }
+  walls.count = nw; pitched.count = np; flat.count = nf; gabled.count = gableEnds.count = ng; stacks.count = ns; st0.buildings = nw;
+  for (const m of [walls, pitched, flat, gabled, gableEnds, stacks]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; scene.add(m); }
 
   // hedges and dry-stone walls, laid in short pieces that follow the ground
   const [hc, hg] = canvas2d(64, 64); hg.fillStyle = '#263a17'; hg.fillRect(0, 0, 64, 64);
@@ -1316,8 +1444,9 @@ addEventListener('resize', () => {
 });
 
 /* ---------- input: keys, slider, smart trainer ---------- */
-const START = real ? 850 : 0;          // Leckhampton: begin on the lane about 150 m below where the hill steepens, not out in the vale
-const st = { s: START, v: 6, power: 220, target: 220, dist: 0, trainer: false };
+const START = real ? COURSES[COURSE].start : 0;
+const st = { s: START, v: 6, power: 220, target: 220, dist: 0, trainer: false, cadence: 0, cadAt: 0 };
+const erg = { on: false, holding: false, watts: 0 };       // filled in by the workout section below
 window.ride = st; st.haze = hazeCol; st.built = st0;
 st.goNear = (x, z) => { let b = 0, bd = 1e12; for (let i = 0; i < N; i++) { const d = (P[i].x - x) ** 2 + (P[i].z - z) ** 2; if (d < bd) { bd = d; b = i; } } st.s = Math.max(0, b * LEN / N - 60); return Math.round(Math.sqrt(bd)); };   // for checking: ride to the road nearest a point
 st.weather = (n, i) => setWeather(n, i);
@@ -1329,7 +1458,7 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowRight') skip(250);
   if (e.key === 'ArrowLeft') skip(-250);
 });
-$('pwr').addEventListener('input', e => { st.target = +e.target.value; });
+$('pwr').addEventListener('input', e => { if (!erg.on) st.target = +e.target.value; });
 
 // hide everything on screen, leaving only the ride: the button, the H key, or by voice. H, a click, or "show" brings it back.
 const setClean = hide => document.body.classList.toggle('clean', hide);
@@ -1342,7 +1471,10 @@ $('skip').addEventListener('click', () => skip(250));
    Service (FTMS), the game takes control of it and sends the road gradient, so climbs feel harder on the bike.
    Without FTMS, or if the trainer refuses control, it stays power only. */
 const FTMS = 0x1826, FTMS_POINT = 0x2AD9;          // service, and its Fitness Machine Control Point
-const OP_CONTROL = 0x00, OP_SIM = 0x11, OP_REPLY = 0x80, OP_OK = 0x01;
+const OP_CONTROL = 0x00, OP_POWER = 0x05, OP_START = 0x07, OP_SIM = 0x11, OP_REPLY = 0x80, OP_OK = 0x01;
+// Bluefy (the Web Bluetooth browser for iPad and iPhone) and older Chrome only have the plain writeValue
+const btWrite = (ch, data) => ch.writeValueWithResponse ? ch.writeValueWithResponse(data) : ch.writeValue(data);
+const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const bike = { dev: null, known: null, point: null, busy: false, sent: 0, at: 0, fails: 0, timer: 0, tries: 0 };
 // How much of the road's gradient the trainer is asked to feel. Half by default, like most indoor games,
 // so a 10 % climb pedals like 5 %; descents count half again. ?hills=100 gives the full gradient, ?hills=0 none.
@@ -1379,7 +1511,7 @@ const ftmsAsk = (point, bytes) => new Promise((ok, no) => {
   };
   const t = setTimeout(() => { end(); no(new Error('no reply from trainer')); }, 3000);
   point.addEventListener('characteristicvaluechanged', reply);
-  point.writeValueWithResponse(Uint8Array.from(bytes)).catch(err => { end(); no(err); });
+  btWrite(point, Uint8Array.from(bytes)).catch(err => { end(); no(err); });
 });
 
 // Indoor Bike Simulation Parameters: wind, gradient, rolling resistance and drag, matching the ride's own physics.
@@ -1397,14 +1529,27 @@ function simParams(gradePct) {
 // about once a second, or sooner when the gradient has moved by more than 0.5 %
 async function sendGrade() {
   const now = performance.now(), g = Math.max(-20, Math.min(20, grade)) * (grade > 0 ? HILLS : HILLS * 0.5), wait = now - bike.at;
+  if (erg.holding) return sendWatts();              // ERG mode: the trainer holds a power instead of following the road
   if (!bike.point || bike.busy || wait < 250 || (wait < 1000 && Math.abs(g - bike.sent) <= 0.5)) return;
   bike.busy = true; bike.at = now;
   const point = bike.point;
-  try { await point.writeValueWithResponse(simParams(g)); bike.sent = g; bike.fails = 0; }
+  try { await btWrite(point, simParams(g)); bike.sent = g; bike.fails = 0; bike.watts = -1; }
   catch (err) {
     // three misses in a row: give up on gradient and carry on with power only
     if (bike.point === point && ++bike.fails >= 3) { bike.point = null; clearInterval(bike.timer); btLabel(); }
   }
+  bike.busy = false;
+}
+
+// ERG mode: Set Target Power, in whole watts. Sent when the target changes, and repeated every few seconds in case one was missed.
+async function sendWatts() {
+  const now = performance.now(), w = Math.max(0, Math.min(2000, Math.round(erg.watts)));
+  if (!bike.point || bike.busy || (w === bike.watts && now - bike.wAt < 4000)) return;
+  bike.busy = true;
+  const point = bike.point, d = new DataView(new ArrayBuffer(3));
+  d.setUint8(0, OP_POWER); d.setInt16(1, w, true);
+  try { await btWrite(point, d); bike.watts = w; bike.wAt = now; bike.fails = 0; bike.at = 0; }
+  catch (err) { if (bike.point === point && ++bike.fails >= 5) { bike.point = null; clearInterval(bike.timer); btLabel(); } }
   bike.busy = false;
 }
 
@@ -1413,7 +1558,8 @@ async function ftmsStart(server) {
     const point = await (await server.getPrimaryService(FTMS)).getCharacteristic(FTMS_POINT);
     await point.startNotifications();
     await ftmsAsk(point, [OP_CONTROL]);
-    Object.assign(bike, { point, busy: false, sent: 0, at: 0, fails: 0 });
+    await ftmsAsk(point, [OP_START]).catch(() => {});      // some trainers want "start" before they act on a target; others refuse it harmlessly
+    Object.assign(bike, { point, busy: false, sent: 0, at: 0, fails: 0, watts: -1, wAt: 0 });
     bike.timer = setInterval(sendGrade, 250);
   } catch (err) { bike.point = null; }                     // no FTMS, or control not given: power only
 }
@@ -1430,7 +1576,20 @@ async function useTrainer(dev) {
   const svc = await server.getPrimaryService('cycling_power');
   const ch = await svc.getCharacteristic('cycling_power_measurement');
   await ch.startNotifications();
-  ch.addEventListener('characteristicvaluechanged', e => { st.trainer = true; setTarget(e.target.value.getInt16(2, true)); });
+  let crank = null;
+  ch.addEventListener('characteristicvaluechanged', e => {
+    const d = e.target.value, flags = d.getUint16(0, true);
+    st.trainer = true; setTarget(d.getInt16(2, true));
+    if (flags & 0x20) {                                     // crank revolutions and their clock (1/1024 s): cadence
+      const o = 4 + (flags & 1 ? 1 : 0) + (flags & 4 ? 2 : 0) + (flags & 0x10 ? 6 : 0);
+      if (d.byteLength >= o + 4) {
+        const revs = d.getUint16(o, true), t = d.getUint16(o + 2, true), now = performance.now();
+        if (crank && t !== crank.t) { st.cadence = ((revs - crank.revs) & 0xffff) / (((t - crank.t) & 0xffff) / 1024) * 60; st.cadAt = now; }
+        else if (crank && now - st.cadAt > 2500) st.cadence = 0;
+        if (!crank || t !== crank.t) crank = { revs, t };
+      }
+    }
+  });
   if (!watched.has(dev)) {
     watched.add(dev);
     dev.addEventListener('gattserverdisconnected', () => {
@@ -1465,7 +1624,7 @@ async function knownTrainers() {
 }
 
 $('bt').addEventListener('click', async () => {
-  if (!navigator.bluetooth) { $('bt').textContent = 'Needs Chrome or Edge'; return; }
+  if (!navigator.bluetooth) { $('bt').textContent = IOS ? 'Open this page in the Bluefy app' : 'Needs Chrome or Edge'; return; }
   if (bike.busyJoin) return;
   bike.busyJoin = true; bike.tries = 99;                    // a click takes over from any automatic retry
   try {
@@ -1487,6 +1646,151 @@ $('bt').addEventListener('click', async () => {
 btLabel();
 setHills(HILLS * 100);
 
+/* ---------- ERG mode and workouts ----------
+   In ERG mode the trainer holds a target power whatever the cadence or the road, so there is nothing to shift.
+   A workout is a list of steps; each step is { d: seconds, a: start, b: end } as fractions of FTP (a ramp when they differ),
+   or { d, free: true } for a stretch of ordinary riding. Without a trainer the target drives the ride, for trying workouts out. */
+{
+  const FTP_KEY = 'golden-hour-ride-ftp', MINE_KEY = 'golden-hour-ride-workouts';
+  const S = (min, a, b = a, free) => free ? { d: min * 60, free: true } : { d: min * 60, a, b };
+  const rep = (n, ...steps) => Array.from({ length: n }, () => steps).flat();
+  const BUILT_IN = [
+    { name: 'Easy spin', note: 'Recovery, or a first try of ERG mode', steps: [S(5, .45, .62), S(20, .62), S(5, .62, .45)] },
+    { name: 'Endurance hour', note: 'Steady zone 2 with three short lifts', steps: [S(8, .45, .68), ...rep(3, S(12, .7), S(3, .82)), S(7, .65, .45)] },
+    { name: 'Sweet spot 3 × 10', note: '10 min at 90 %, 4 min easy', steps: [S(10, .45, .75), ...rep(3, S(10, .9), S(4, .55)), S(6, .55, .4)] },
+    { name: 'Threshold 2 × 20', note: '20 min at FTP, 5 min easy', steps: [S(10, .45, .8), S(1, 1.05), S(3, .5), ...rep(2, S(20, 1), S(5, .5)), S(5, .5, .4)] },
+    { name: 'Over-unders 3 × 9', note: '2 min at 95 %, 1 min at 105 %, three times a set', steps: [S(10, .45, .8), ...rep(3, ...rep(3, S(2, .95), S(1, 1.05)), S(5, .5)), S(5, .5, .4)] },
+    { name: 'VO2 max 5 × 3', note: '3 min at 118 %, 3 min easy', steps: [S(10, .45, .8), S(1, 1.1), S(3, .5), ...rep(5, S(3, 1.18), S(3, .5)), S(6, .5, .4)] },
+    { name: '30 / 30s', note: 'Two sets of eight: 30 s at 130 %, 30 s easy', steps: [S(10, .45, .8), S(2, .5), ...rep(8, S(.5, 1.3), S(.5, .5)), S(5, .5), ...rep(8, S(.5, 1.3), S(.5, .5)), S(6, .5, .4)] }];
+  const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v === null || v === undefined ? d : v; } catch { return d; } };
+  const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  let ftp = Math.max(50, Math.min(600, +load(FTP_KEY, 200) || 200)), mine = load(MINE_KEY, []);
+  if (!Array.isArray(mine)) mine = [];
+  const total = plan => plan.steps.reduce((a, s) => a + s.d, 0);
+  const clockStr = s => { s = Math.max(0, Math.ceil(s)); return (s >= 3600 ? Math.floor(s / 3600) + ':' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') : Math.floor(s / 60)) + ':' + String(s % 60).padStart(2, '0'); };
+  const zone = f => f < .6 ? '#8d939c' : f < .76 ? '#4f9be0' : f < .9 ? '#5fc46b' : f < 1.05 ? '#e9c84a' : f < 1.19 ? '#f08a3c' : '#e6524f';
+
+  // the shape of a workout: one block per step, as tall as its power
+  function profile(cv, plan, done = -1) {
+    const g = cv.getContext('2d'), W = cv.width, H = cv.height, T = total(plan) || 1;
+    const top = Math.max(1.3, ...plan.steps.map(s => s.free ? 0 : Math.max(s.a, s.b))), y = f => H - f / top * (H - 2);
+    g.clearRect(0, 0, W, H);
+    let t = 0;
+    for (const s of plan.steps) {
+      const x0 = t / T * W, x1 = (t + s.d) / T * W; t += s.d;
+      if (s.free) { g.fillStyle = 'rgba(255,255,255,.22)'; g.fillRect(x0, H * .55, Math.max(1, x1 - x0 - 1), H * .45); continue; }
+      g.fillStyle = zone((s.a + s.b) / 2);
+      g.beginPath(); g.moveTo(x0, H); g.lineTo(x0, y(s.a)); g.lineTo(Math.max(x0 + 1, x1 - 1), y(s.b)); g.lineTo(Math.max(x0 + 1, x1 - 1), H); g.fill();
+    }
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(0, y(1), W, 1);                 // the line at FTP
+    if (done >= 0) { g.fillStyle = 'rgba(10,9,8,.55)'; g.fillRect(0, 0, done / T * W, H); g.fillStyle = '#fff'; g.fillRect(done / T * W - 1, 0, 3, H); }
+  }
+
+  // Zwift workout files (.zwo): the steady, ramp, interval and free-ride blocks
+  function parseZwo(text) {
+    const doc = new DOMParser().parseFromString(text, 'application/xml'), w = doc.querySelector('workout');
+    if (!w || doc.querySelector('parsererror')) throw new Error('not a workout file');
+    const steps = [], n = (el, k, d = 0) => { const v = parseFloat(el.getAttribute(k)); return isFinite(v) ? v : d; };
+    for (const el of w.children) {
+      const d = n(el, 'Duration'), tag = el.tagName.toLowerCase();
+      if (tag === 'steadystate') steps.push({ d, a: n(el, 'Power', n(el, 'PowerLow', .6)), b: n(el, 'Power', n(el, 'PowerLow', .6)) });
+      else if (tag === 'warmup' || tag === 'cooldown' || tag === 'ramp') steps.push({ d, a: n(el, 'PowerLow', .5), b: n(el, 'PowerHigh', .5) });
+      else if (tag === 'intervalst') for (let i = 0; i < Math.max(1, n(el, 'Repeat', 1)); i++) {
+        steps.push({ d: n(el, 'OnDuration'), a: n(el, 'OnPower', n(el, 'PowerOnHigh', 1)), b: n(el, 'OnPower', n(el, 'PowerOnHigh', 1)) });
+        steps.push({ d: n(el, 'OffDuration'), a: n(el, 'OffPower', n(el, 'PowerOffHigh', .5)), b: n(el, 'OffPower', n(el, 'PowerOffHigh', .5)) });
+      }
+      else if (tag === 'freeride' || tag === 'maxeffort') steps.push({ d, free: true });
+    }
+    const ok = steps.filter(s => s.d > 0 && s.d < 6 * 3600 && (s.free || (s.a >= 0 && s.a < 4 && s.b >= 0 && s.b < 4))).slice(0, 400);
+    if (!ok.length) throw new Error('no steps found');
+    const name = (doc.querySelector('workout_file > name') || {}).textContent || 'Imported workout';
+    return { name: name.trim().slice(0, 60), note: 'Imported', steps: ok };
+  }
+
+  const panel = $('wkp'), bar = $('erg'), btn = $('wk');
+  let run = null;          // { plan, i, t (seconds into step i), paused, bias } or { steady: true, watts }
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function drawPanel() {
+    const all = [...BUILT_IN, ...mine];
+    panel.innerHTML = `<h3>ERG mode</h3>
+      <div class="row"><label for="w-ftp">Your FTP</label><input id="w-ftp" type="number" inputmode="numeric" min="50" max="600" step="5" value="${ftp}"><span>watts</span></div>
+      <div class="row"><label for="w-hold">Hold</label><input id="w-hold" type="number" inputmode="numeric" min="30" max="1000" step="5" value="${Math.round(ftp * .65 / 5) * 5}"><span>watts</span><button id="w-go">Start</button></div>
+      <h3>Workouts</h3>` +
+      all.map((p, k) => `<button class="wk" data-k="${k}"><b>${esc(p.name)}</b><span>${Math.round(total(p) / 60)} min</span><canvas width="560" height="60"></canvas><i>${esc(p.note || '')}</i></button>`).join('') +
+      `<div class="row"><label class="btn">Add a .zwo file<input id="w-file" type="file" accept=".zwo,.xml,application/xml,text/xml" hidden></label>${mine.length ? '<button id="w-clear">Remove added</button>' : ''}</div>
+      <div class="muted" id="w-note">${bike.point ? 'The trainer will hold each target for you.' : bike.dev ? 'This trainer reports power only, so it cannot hold a target: follow the numbers yourself.' : 'No trainer connected: the targets drive the ride on their own, so you can try a workout out. Connect the trainer to have it hold them.'}</div>`;
+    panel.querySelectorAll('.wk').forEach(b => { profile(b.querySelector('canvas'), all[+b.dataset.k]); b.onclick = () => start(all[+b.dataset.k]); });
+    $('w-ftp').onchange = e => { ftp = Math.max(50, Math.min(600, Math.round(+e.target.value) || ftp)); e.target.value = ftp; save(FTP_KEY, ftp); };
+    $('w-go').onclick = () => { run = { steady: true, watts: Math.max(30, Math.min(1000, Math.round(+$('w-hold').value) || 150)), paused: false }; begin(); };
+    $('w-file').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      try { const p = parseZwo(await f.text()); mine = [...mine.filter(m => m.name !== p.name), p].slice(-30); save(MINE_KEY, mine); drawPanel(); }
+      catch (err) { $('w-note').textContent = 'That file could not be read as a Zwift workout (.zwo).'; }
+    };
+    const c = $('w-clear'); if (c) c.onclick = () => { mine = []; save(MINE_KEY, mine); drawPanel(); };
+  }
+  const showPanel = on => { panel.hidden = !on; btn.classList.toggle('on', on || !!run); if (on) { $('log').hidden = true; $('logbtn').classList.remove('on'); drawPanel(); } };
+  btn.onclick = () => showPanel(panel.hidden);
+  $('logbtn').addEventListener('click', () => showPanel(false));
+
+  function start(plan) { run = { plan, i: 0, t: 0, paused: false, bias: 1 }; begin(); }
+  function begin() { erg.on = true; showPanel(false); bar.hidden = false; btn.classList.add('on'); $('pwr').disabled = true; last = performance.now(); step(0); }
+  function end(msg) {
+    run = null; erg.on = erg.holding = false; erg.watts = 0; bike.at = 0;        // back to the road's gradient straight away
+    $('pwr').disabled = false; btn.classList.remove('on');
+    if (msg) { $('e-msg').textContent = msg; setTimeout(() => { if (!run) bar.hidden = true; }, 6000); } else bar.hidden = true;
+  }
+  const cur = () => run.plan.steps[run.i];
+  const elapsed = () => run.plan.steps.slice(0, run.i).reduce((a, s) => a + s.d, 0) + run.t;
+  function next(carry = 0) { run.t = carry; if (++run.i >= run.plan.steps.length) end('Workout complete. Well ridden.'); }
+
+  let last = performance.now();
+  function step(dt) {
+    if (!run) return;
+    let free = false;
+    if (run.steady) erg.watts = run.watts;
+    else {
+      if (!run.paused) { run.t += dt; while (run && run.t >= cur().d) next(run.t - cur().d); }
+      if (!run) return;
+      const s = cur(); free = !!s.free;
+      erg.watts = free ? 0 : Math.round(ftp * run.bias * (s.a + (s.b - s.a) * run.t / s.d));
+    }
+    erg.holding = !free && !run.paused;
+    if (erg.holding && !st.trainer) setTarget(erg.watts);       // no trainer: the target is the ride's power
+    // the bar
+    $('e-tg').textContent = free ? 'Free' : run.paused ? '–' : erg.watts;
+    if (run.steady) {
+      $('e-st').textContent = '∞'; $('e-stl').textContent = 'steady'; $('e-tot').textContent = '–'; $('e-name').textContent = 'Holding ' + run.watts + ' W'; $('e-next').textContent = '';
+      $('e-cv').hidden = true; $('e-skip').hidden = true;
+    } else {
+      const s = cur(), n = run.plan.steps[run.i + 1], w = f => Math.round(ftp * run.bias * f);
+      $('e-st').textContent = clockStr(s.d - run.t); $('e-stl').textContent = `step ${run.i + 1} of ${run.plan.steps.length}`;
+      $('e-tot').textContent = clockStr(total(run.plan) - elapsed());
+      $('e-name').textContent = run.plan.name + (run.bias !== 1 ? ` · ${Math.round(run.bias * 100)} %` : '');
+      $('e-next').textContent = n ? 'Next: ' + (n.free ? 'free ride' : n.a === n.b ? w(n.a) + ' W' : w(n.a) + ' to ' + w(n.b) + ' W') + ' for ' + clockStr(n.d) : 'Last step';
+      $('e-cv').hidden = false; $('e-skip').hidden = false; profile($('e-cv'), run.plan, elapsed());
+    }
+    $('e-pause').textContent = run.paused ? 'Resume' : 'Pause';
+    $('e-msg').textContent = run.paused ? 'Paused: the trainer follows the road' : free ? 'Free ride: the trainer follows the road' : bike.point ? 'Trainer holding the target' : st.trainer ? 'Trainer is power only: hold the target yourself' : 'No trainer: simulated';
+  }
+  setInterval(() => { const now = performance.now(), dt = Math.min(1, (now - last) / 1000); last = now; step(dt); }, 250);    // real time, not frames; a hidden page stops the clock
+
+  $('e-less').onclick = () => { if (!run) return; if (run.steady) run.watts = Math.max(30, run.watts - 5); else run.bias = Math.max(.5, Math.round((run.bias - .05) * 100) / 100); step(0); };
+  $('e-more').onclick = () => { if (!run) return; if (run.steady) run.watts = Math.min(1000, run.watts + 5); else run.bias = Math.min(1.5, Math.round((run.bias + .05) * 100) / 100); step(0); };
+  $('e-pause').onclick = () => { if (run) { run.paused = !run.paused; if (run.paused) bike.at = 0; step(0); } };
+  $('e-skip').onclick = () => { if (run && !run.steady) { next(); step(0); } };
+  $('e-end').onclick = () => end();
+  st.erg = erg; st.workout = { start, end, state: () => run, parseZwo, list: () => [...BUILT_IN, ...mine] };       // for checking
+}
+
+/* ---------- keep the screen awake while riding (a tablet on the handlebars would otherwise dim and lock) ---------- */
+if (navigator.wakeLock) {
+  let lock = null;
+  const hold = async () => { if (document.visibilityState === 'visible' && !lock) try { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } catch {} };
+  document.addEventListener('visibilitychange', hold); addEventListener('pointerdown', hold); hold();
+}
+
 /* ---------- ride log: distance ridden, kept in this browser (localStorage) ---------- */
 {
   const KEY = 'golden-hour-ride-log', MIN = 100;         // rides under 100 m are not kept
@@ -1507,7 +1811,7 @@ setHills(HILLS * 100);
   const draw = () => {
     const all = load().filter(r => r.t !== ride.t); if (st.dist >= MIN) all.push({ ...ride, m: Math.round(st.dist) });
     const today = new Date().toDateString(), sum = f => all.filter(f).reduce((a, r) => a + r.m, 0);
-    const rows = all.slice(-10).reverse().map(r => `<tr><td>${day(r.t)}</td><td class="muted">${r.c === 'leckhampton' ? 'Leckhampton' : 'Alps'}</td><td class="muted">${mins(r.s)}</td><td>${km(r.m)} km</td></tr>`).join('');
+    const rows = all.slice(-10).reverse().map(r => `<tr><td>${day(r.t)}</td><td class="muted">${COURSES[r.c] ? COURSES[r.c].label : 'Alps'}</td><td class="muted">${mins(r.s)}</td><td>${km(r.m)} km</td></tr>`).join('');
     box.innerHTML = `<h3>Ride log</h3><div class="tot"><div><b>${km(sum(r => new Date(r.t).toDateString() === today))}</b><span>km today</span></div>` +
       `<div><b>${km(sum(() => true))}</b><span>km in total</span></div><div><b>${all.length}</b><span>rides</span></div></div>` +
       (rows ? `<table>${rows}</table>` : `<div class="muted">Rides appear here after the first 100 m.</div>`) +
@@ -1649,6 +1953,7 @@ function tick() {
     huT = 0.25;
     drawHeadUnit(st.v * 3.6, st.power);
     $('h-pw').textContent = st.power.toFixed(0);
+    $('h-cd').textContent = st.trainer && st.cadence > 0 ? st.cadence.toFixed(0) : '–';
     $('h-sp').textContent = (st.v * 3.6).toFixed(1);
     $('h-gr').textContent = (grade >= 0 ? '+' : '') + grade.toFixed(1);
     $('h-di').textContent = (st.dist / 1000).toFixed(2);

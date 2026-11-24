@@ -9,5 +9,5 @@ mkdir -p dist/assets
 find dist -mindepth 1 -maxdepth 1 ! -name .spacefast -exec rm -rf {} +
 mkdir -p dist/assets
 cp index.html dist/
-cp assets/*.jpg assets/leckhampton.js assets/leckhampton_osm.js dist/assets/
+cp assets/*.jpg assets/leckhampton.js assets/leckhampton_osm.js assets/tiptree.js assets/tiptree_osm.js dist/assets/
 sf publish dist -y -m "${1:-Update}"

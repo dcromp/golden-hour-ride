@@ -1,17 +1,28 @@
-"""Builds assets/leckhampton.js: the Leckhampton Hill loop as a road line plus a terrain height grid.
+"""Builds assets/<course>.js: a real loop as a road line plus a terrain height grid.
 
 Route: OpenStreetMap routing service (car profile) through the loop's waypoints.
 Heights: Environment Agency LiDAR Composite DTM (1 m survey), Open Government Licence.
   Road profile sampled at 2 m; surrounding terrain at 10 m.
-Run from the project folder:  python3 tools/build_leckhampton.py
+Run from the project folder:  python3 tools/build_course.py tiptree     (or leckhampton)
+To add a course, add an entry to COURSES below: a name, the loop's waypoints as [lat, lon] (first and last the same),
+and how much land to keep around the road.
 """
 import base64, json, math, os, struct, sys, time, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
 
-CACHE = sys.argv[1] if len(sys.argv) > 1 else 'tools/.cache'
+COURSES = {
+    'leckhampton': {'name': 'Leckhampton Hill loop', 'margin': 1300, 'quarry': [51.8642, -2.0787],
+                    'waypoints': [[51.8826, -2.0790], [51.8595, -2.0823], [51.8592, -2.0613], [51.8527, -2.0477], [51.8749, -2.0524], [51.8818, -2.0555], [51.8826, -2.0790]]},
+    # Tiptree, out to Inworth and Messing, across to Layer Marney Tower, and home down the lanes from the Colchester side
+    'tiptree': {'name': 'Tiptree, Messing and Layer Marney loop', 'margin': 1000,
+                'waypoints': [[51.81056, 0.75068], [51.82825, 0.72639], [51.83661, 0.75253], [51.82271, 0.79702], [51.81056, 0.75068]]},
+}
+KEY = sys.argv[1] if len(sys.argv) > 1 else 'tiptree'
+CFG = COURSES[KEY]
+CACHE = sys.argv[2] if len(sys.argv) > 2 else 'tools/.cache'
 os.makedirs(CACHE, exist_ok=True)
 UA = {'User-Agent': 'golden-hour-ride-poc'}
-WAYPOINTS = [[51.8826, -2.0790], [51.8595, -2.0823], [51.8592, -2.0613], [51.8527, -2.0477], [51.8749, -2.0524], [51.8818, -2.0555], [51.8826, -2.0790]]
+WAYPOINTS = CFG['waypoints']
 WCS = 'https://environment.data.gov.uk/geoservices/datasets/13787b9a-26a4-4775-8523-806d13af58fc/wcs'
 COV = '13787b9a-26a4-4775-8523-806d13af58fc__Lidar_Composite_Elevation_DTM_1m'
 
@@ -103,7 +114,7 @@ class Grids:
 
 # ---- route
 url = 'https://routing.openstreetmap.de/routed-car/route/v1/driving/' + ';'.join(f'{lon},{lat}' for lat, lon in WAYPOINTS) + '?overview=full&geometries=geojson'
-data = json.loads(get(url, 'route.json'))
+data = json.loads(get(url, 'route.json' if KEY == 'leckhampton' else f'route_{KEY}.json'))
 latlon = [(lat, lon) for lon, lat in data['routes'][0]['geometry']['coordinates']]
 print('router:', len(latlon), 'points,', round(data['routes'][0]['distance']), 'm')
 
@@ -161,7 +172,7 @@ print('steepest up %.1f%%, steepest down %.1f%%, climb %.0f m' % (max(grades), m
 Es, Ns = [p[0] for p in line], [p[1] for p in line]
 cE, cN = (min(Es) + max(Es)) / 2, (min(Ns) + max(Ns)) / 2
 CELL = 10
-size = math.ceil((max(max(Es) - min(Es), max(Ns) - min(Ns)) + 2 * 1300) / 200) * 200
+size = math.ceil((max(max(Es) - min(Es), max(Ns) - min(Ns)) + 2 * CFG['margin']) / 200) * 200
 cE, cN = round(cE / CELL) * CELL, round(cN / CELL) * CELL
 cells = size // CELL
 coarse = Grids(1000, CELL)
@@ -185,8 +196,9 @@ q = struct.pack('<%dH' % len(grid), *[round((h - lo) / (hi - lo) * 65535) for h 
 
 # road line in local metres (x east, z south), a control point every 15 m
 road = [[round(line[k][0] - cE, 2), round(hts[k], 2), round(-(line[k][1] - cN), 2)] for k in range(0, len(line) - 1, 3)]
-course = {'name': 'Leckhampton Hill loop', 'size': size, 'cells': cells, 'origin': [cE, cN], 'quarry': [round(to_bng(51.8642, -2.0787)[0] - cE, 1), round(-(to_bng(51.8642, -2.0787)[1] - cN), 1)], 'demMin': lo, 'demMax': hi, 'road': road,
+course = {'name': CFG['name'], 'size': size, 'cells': cells, 'origin': [cE, cN], 'demMin': lo, 'demMax': hi, 'road': road,
           'credit': 'Route © OpenStreetMap contributors. Heights: Environment Agency LiDAR, Open Government Licence.',
           'dem': base64.b64encode(q).decode()}
-open('assets/leckhampton.js', 'w').write('window.RIDE_COURSES = window.RIDE_COURSES || {};\nwindow.RIDE_COURSES.leckhampton = ' + json.dumps(course) + ';\n')
-print('wrote assets/leckhampton.js', os.path.getsize('assets/leckhampton.js') // 1024, 'KB;', len(road), 'road points')
+if 'quarry' in CFG: Q = to_bng(*CFG['quarry']); course['quarry'] = [round(Q[0] - cE, 1), round(-(Q[1] - cN), 1)]
+open(f'assets/{KEY}.js', 'w').write('window.RIDE_COURSES = window.RIDE_COURSES || {};\nwindow.RIDE_COURSES.%s = ' % KEY + json.dumps(course) + ';\n')
+print(f'wrote assets/{KEY}.js', os.path.getsize(f'assets/{KEY}.js') // 1024, 'KB;', len(road), 'road points')

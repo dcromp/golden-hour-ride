@@ -1,17 +1,19 @@
-"""Builds assets/leckhampton_osm.js: buildings, woods, single trees, hedges and walls around the Leckhampton loop.
+"""Builds assets/<course>_osm.js: buildings, woods, single trees, hedges and walls around a course.
 
-Source: OpenStreetMap (© OpenStreetMap contributors, ODbL), read from Overpass responses already cached by the
-real-ride project. Run after build_leckhampton.py:  python3 tools/build_leckhampton_osm.py ~/real-ride/osm-cache
+Source: OpenStreetMap (© OpenStreetMap contributors, ODbL), fetched once from the Overpass service and cached in
+tools/.cache, or read from a folder of saved Overpass responses given as the second argument.
+Run after build_course.py:  python3 tools/build_course_osm.py tiptree
 """
-import base64, glob, importlib.util, json, math, os, sys
+import base64, glob, json, math, os, sys, time, urllib.parse, urllib.request
 
-SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser('~/real-ride/osm-cache')
-course = json.loads(open('assets/leckhampton.js').read().split(' = ', 2)[2].rstrip().rstrip(';'))
+KEY = sys.argv[1] if len(sys.argv) > 1 else 'tiptree'
+SRC = sys.argv[2] if len(sys.argv) > 2 else None
+course = json.loads(open(f'assets/{KEY}.js').read().split(' = ', 2)[2].rstrip().rstrip(';'))
 cE, cN = course['origin']; SIZE, CELLS = course['size'], course['cells']; HALF = SIZE / 2
 road = [(p[0], p[2]) for p in course['road']]
 
 # reuse the grid-reference maths from the terrain script without running it
-src = open('tools/build_leckhampton.py').read()
+src = open('tools/build_course.py').read()
 ns = {'math': math}; exec(src[src.index('def to_bng'):src.index('def read_tiff')], ns); to_bng = ns['to_bng']
 def local(lat, lon):
     E, N = to_bng(lat, lon); return (E - cE, -(N - cN))
@@ -20,10 +22,31 @@ def local(lat, lon):
 def road_dist(x, z):
     return math.sqrt(min((px - x) ** 2 + (pz - z) ** 2 for px, pz in road))
 
+def overpass(name, what):                # one Overpass query over the box around the course's waypoints, kept in tools/.cache
+    path = f'tools/.cache/{name}_{KEY}.json'
+    if not os.path.exists(path):
+        cfg = {}; exec(src[src.index('COURSES = {'):src.index('KEY = ')], cfg)
+        wp = cfg['COURSES'][KEY]['waypoints']; pad = 0.02
+        box = '%f,%f,%f,%f' % (min(p[0] for p in wp) - pad, min(p[1] for p in wp) - pad * 1.6, max(p[0] for p in wp) + pad, max(p[1] for p in wp) + pad * 1.6)
+        q = f'[out:json][timeout:120][bbox:{box}];({what});out geom;'
+        os.makedirs('tools/.cache', exist_ok=True)
+        for attempt in range(6):             # the public servers are often busy: try each in turn, a few times
+            host = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'][attempt % 2]
+            try:
+                req = urllib.request.Request(host, data=urllib.parse.urlencode({'data': q}).encode(), headers={'User-Agent': 'golden-hour-ride-poc'})
+                data = urllib.request.urlopen(req, timeout=180).read(); json.loads(data); break
+            except Exception as ex:
+                if attempt == 5: raise
+                print('  map server busy, trying again:', ex); time.sleep(5 + attempt * 5)
+        open(path, 'wb').write(data)
+    return path
+def fetch():                             # everything the scenery uses
+    return [overpass('osm', 'way[building];way[natural=wood];way[landuse=forest];relation[natural=wood];relation[landuse=forest];way[barrier~"^(hedge|wall|retaining_wall)$"];node[natural=tree];'),
+            overpass('osm_roads', 'way[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];')]
+
 els = {}
-for f in glob.glob(os.path.join(SRC, '*.json')):
+for f in (glob.glob(os.path.join(SRC, '*.json')) if SRC else fetch()):
     for e in json.load(open(f)).get('elements', []):
-        if e.get('type') == 'node' and not (51.83 < e.get('lat', 0) < 51.91): continue
         els[(e['type'], e['id'])] = e
 print('elements:', len(els))
 ring = lambda geom: [local(p['lat'], p['lon']) for p in geom]
@@ -52,7 +75,22 @@ def height(t):
     if b in ('garage', 'garages', 'shed', 'hut', 'carport', 'roof', 'greenhouse'): return 2.6
     return 5.6
 
-buildings, woods, holes, trees, lines = [], [], [], [], []
+# the rest of the road network: every other road within sight of the course, as [width in metres, [x, z, x, z, ...]]
+ROAD_W = {'motorway': 9, 'trunk': 8, 'primary': 7.5, 'secondary': 7, 'tertiary': 6, 'unclassified': 4.6, 'residential': 5.4, 'living_street': 4.6, 'service': 3.2, 'track': 2.6}
+ROAD_SEEN = 650
+def road_way(e, t):
+    kind = t['highway'].replace('_link', '')
+    if t.get('access') == 'private' and kind == 'service' and t.get('service') == 'driveway': return
+    if t.get('tunnel') in ('yes', 'building_passage'): return
+    pts = ring(e['geometry']); run = []
+    def flush():
+        if len(run) >= 2: roads.append([ROAD_W[kind], [round(v, 1) for p in run for v in p]])
+    for p in pts:
+        if inside(p[0], p[1], 15) and road_dist(p[0], p[1]) < ROAD_SEEN: run.append(p)
+        else: flush(); run = []
+    flush()
+
+buildings, woods, holes, trees, lines, roads = [], [], [], [], [], []
 for e in els.values():
     t = e.get('tags', {})
     if e['type'] == 'node':
@@ -61,6 +99,7 @@ for e in els.values():
             if inside(x, z, 20) and road_dist(x, z) > 4.5: trees.append([round(x, 1), round(z, 1)])
         continue
     if e['type'] == 'way' and 'geometry' in e:
+        if t.get('highway'): road_way(e, t); continue
         pts = ring(e['geometry'])
         if t.get('building') and len(pts) >= 4:
             b = best_box(pts)
@@ -104,7 +143,8 @@ for p in holes: fill(p, 0)
 bits = bytearray((len(mask) + 7) // 8)
 for i, v in enumerate(mask):
     if v: bits[i >> 3] |= 1 << (i & 7)
+print('other roads: %d pieces, %.1f km' % (len(roads), sum(math.hypot(r[1][k + 2] - r[1][k], r[1][k + 3] - r[1][k + 1]) for r in roads for k in range(0, len(r[1]) - 2, 2)) / 1000))
 print('buildings %d, single trees %d, hedge/wall pieces %d (hedge %d), woodland %.2f km2' % (len(buildings), len(trees), len(lines), sum(1 for l in lines if l[4] == 0), sum(mask) * (SIZE / CELLS) ** 2 / 1e6))
-out = {'buildings': buildings, 'trees': trees, 'lines': lines, 'woods': base64.b64encode(bytes(bits)).decode(), 'credit': 'Buildings, woods and hedges © OpenStreetMap contributors.'}
-open('assets/leckhampton_osm.js', 'w').write('window.RIDE_COURSES.leckhampton.osm = ' + json.dumps(out, separators=(',', ':')) + ';\n')
-print('wrote assets/leckhampton_osm.js', os.path.getsize('assets/leckhampton_osm.js') // 1024, 'KB')
+out = {'buildings': buildings, 'trees': trees, 'lines': lines, 'roads': roads, 'woods': base64.b64encode(bytes(bits)).decode(), 'credit': 'Buildings, woods and hedges © OpenStreetMap contributors.'}
+open(f'assets/{KEY}_osm.js', 'w').write(f'window.RIDE_COURSES.{KEY}.osm = ' + json.dumps(out, separators=(',', ':')) + ';\n')
+print(f'wrote assets/{KEY}_osm.js', os.path.getsize(f'assets/{KEY}_osm.js') // 1024, 'KB')

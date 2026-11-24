@@ -42,7 +42,8 @@ def overpass(name, what):                # one Overpass query over the box aroun
     return path
 def fetch():                             # everything the scenery uses
     return [overpass('osm', 'way[building];way[natural=wood];way[landuse=forest];relation[natural=wood];relation[landuse=forest];way[barrier~"^(hedge|wall|retaining_wall)$"];node[natural=tree];'),
-            overpass('osm_roads', 'way[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];')]
+            overpass('osm_roads', 'way[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];'),
+            overpass('osm_junctions', 'node[highway=mini_roundabout];way[junction~"^(roundabout|circular)$"];')]
 
 els = {}
 for f in (glob.glob(os.path.join(SRC, '*.json')) if SRC else fetch()):
@@ -91,14 +92,20 @@ def road_way(e, t):
     flush()
 
 buildings, woods, holes, trees, lines, roads = [], [], [], [], [], []
+minis, rings, ring_ways = [], [], {}       # mini roundabouts [x, z]; roundabouts [x, z, island radius, carriageway width]
 for e in els.values():
     t = e.get('tags', {})
     if e['type'] == 'node':
+        if t.get('highway') == 'mini_roundabout':
+            x, z = local(e['lat'], e['lon'])
+            if inside(x, z, 20) and road_dist(x, z) < ROAD_SEEN: minis.append([round(x, 1), round(z, 1)])
+            continue
         if t.get('natural') == 'tree':
             x, z = local(e['lat'], e['lon'])
             if inside(x, z, 20) and road_dist(x, z) > 4.5: trees.append([round(x, 1), round(z, 1)])
         continue
     if e['type'] == 'way' and 'geometry' in e:
+        if t.get('junction') in ('roundabout', 'circular') and t.get('highway') in ROAD_W: ring_ways[e['id']] = (ROAD_W[t['highway'].replace('_link', '')], ring(e['geometry']))
         if t.get('highway'): road_way(e, t); continue
         pts = ring(e['geometry'])
         if t.get('building') and len(pts) >= 4:
@@ -126,6 +133,24 @@ for e in els.values():
             if m.get('type') == 'way' and 'geometry' in m and len(m['geometry']) >= 3:
                 (holes if m.get('role') == 'inner' else woods).append(ring(m['geometry']))
 
+# roundabouts are often mapped as several ways: join those whose ends meet, then take each closed ring's middle and size
+pieces = list(ring_ways.values())
+while pieces:
+    w, pts = pieces.pop()
+    grown = True
+    while grown and math.dist(pts[0], pts[-1]) > 1:
+        grown = False
+        for k, (w2, p2) in enumerate(pieces):
+            if math.dist(pts[-1], p2[0]) < 1: pts = pts + p2[1:]
+            elif math.dist(pts[-1], p2[-1]) < 1: pts = pts + p2[::-1][1:]
+            else: continue
+            pieces.pop(k); grown = True; break
+    if math.dist(pts[0], pts[-1]) > 1 or len(pts) < 4: continue
+    cx, cz = sum(p[0] for p in pts[:-1]) / (len(pts) - 1), sum(p[1] for p in pts[:-1]) / (len(pts) - 1)
+    r = sum(math.dist(p, (cx, cz)) for p in pts[:-1]) / (len(pts) - 1)
+    if inside(cx, cz, 20) and r < 80 and road_dist(cx, cz) < ROAD_SEEN: rings.append([round(cx, 1), round(cz, 1), round(max(1.5, r - w / 2), 1), w])
+print('mini roundabouts %d, roundabouts %d' % (len(minis), len(rings)))
+
 # woodland as a grid matching the terrain's vertices
 W = CELLS + 1; mask = bytearray(W * W)
 def fill(poly, val):
@@ -145,6 +170,6 @@ for i, v in enumerate(mask):
     if v: bits[i >> 3] |= 1 << (i & 7)
 print('other roads: %d pieces, %.1f km' % (len(roads), sum(math.hypot(r[1][k + 2] - r[1][k], r[1][k + 3] - r[1][k + 1]) for r in roads for k in range(0, len(r[1]) - 2, 2)) / 1000))
 print('buildings %d, single trees %d, hedge/wall pieces %d (hedge %d), woodland %.2f km2' % (len(buildings), len(trees), len(lines), sum(1 for l in lines if l[4] == 0), sum(mask) * (SIZE / CELLS) ** 2 / 1e6))
-out = {'buildings': buildings, 'trees': trees, 'lines': lines, 'roads': roads, 'woods': base64.b64encode(bytes(bits)).decode(), 'credit': 'Buildings, woods and hedges © OpenStreetMap contributors.'}
+out = {'buildings': buildings, 'trees': trees, 'lines': lines, 'roads': roads, 'minis': minis, 'rings': rings, 'woods': base64.b64encode(bytes(bits)).decode(), 'credit': 'Buildings, woods and hedges © OpenStreetMap contributors.'}
 open(f'assets/{KEY}_osm.js', 'w').write(f'window.RIDE_COURSES.{KEY}.osm = ' + json.dumps(out, separators=(',', ':')) + ';\n')
 print(f'wrote assets/{KEY}_osm.js', os.path.getsize(f'assets/{KEY}_osm.js') // 1024, 'KB')

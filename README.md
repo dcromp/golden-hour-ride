@@ -11,7 +11,7 @@ round Tiptree in Essex, ERG mode with structured workouts, and support for ridin
   Messing, across towards Layer Marney Tower, and home down Newbridge Road. The ground is Environment Agency 1 m lidar;
   the road and the side roads and junctions around it are from OpenStreetMap. The 3,757 buildings are Ordnance Survey
   footprints, each at the height the lidar measured for it, and the hedges and trees within 150 m of the road stand
-  where the lidar found them, at their real heights. Wall and roof colours are still guessed.
+  where the lidar found them, at their real heights. Wall and roof colours are still guessed. Side roads meet the ride at real junctions with give-way lines, the 13 mini roundabouts are painted domes, and the two larger roundabouts have kerbed grass islands.
   `?course=leckhampton` and `?course=valley` open the original courses; the Course button cycles through all three.
 - **ERG mode**: the Workout button. Set your FTP, then either hold a steady wattage or ride a structured workout
   (seven are built in, and Zwift `.zwo` workout files can be added). The trainer is sent FTMS "set target power", so it

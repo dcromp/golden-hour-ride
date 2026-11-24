@@ -248,7 +248,7 @@ let real = null;
 if (COURSE !== 'valley') {
   $('loading').textContent = COURSES[COURSE].loading;
   const addScript = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('missing ' + src)); document.head.append(s); });
-  const DATA = 6;          // bump when the course files change, so browsers don't reuse an old copy
+  const DATA = 7;          // bump when the course files change, so browsers don't reuse an old copy
   await addScript(`assets/${COURSE}.js?v=${DATA}`);
   await addScript(`assets/${COURSE}_osm.js?v=${DATA}`).catch(() => {});          // buildings, woods and hedges are optional
   real = window.RIDE_COURSES[COURSE];
@@ -547,19 +547,21 @@ const sideRoads = { cells: new Map(), d: () => 99 };
 if (real && real.osm.roads && real.osm.roads.length) {
   const pos = [], uv = [], idx = [], SC = 12, key = (cx, cz) => cx * 8192 + cz, cells = sideRoads.cells;
   const lift = (x, z, nx, nz, hw) => {             // on the ground, rising to meet the ridden road where they join
-    const g = Math.max(meshH(x, z), meshH(x + nx * hw, z + nz * hw), meshH(x - nx * hw, z - nz * hw)) + 0.12, n = nearRoad(x, z);
+    const g = Math.max(meshH(x, z), meshH(x + nx * hw, z + nz * hw), meshH(x - nx * hw, z - nz * hw)) + 0.2, n = nearRoad(x, z);
     if (!n || n.d > 30) return g;
     const k = smooth(3.5, 18, n.d);
     return (n.y - 0.04) * (1 - k) + g * k;
   };
+  const mouths = [], giveWay = [];
   const ribbon = (run, w) => {
+    for (const end of [run, run.slice().reverse()]) { const n = nearRoad(end[0][0], end[0][1]); if (n && n.d < 8) mouths.push([w, end]); }
     const hw = w / 2, base = pos.length / 3; let dist = 0;
     run.forEach(([x, z], i) => {
       const a = run[Math.max(0, i - 1)], b = run[Math.min(run.length - 1, i + 1)], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / L, nz = (b[0] - a[0]) / L;
       if (i) dist += Math.hypot(x - run[i - 1][0], z - run[i - 1][1]);
       const y = lift(x, z, nx, nz, hw);
       pos.push(x - nx * hw, y, z - nz * hw, x + nx * hw, y, z + nz * hw); uv.push(0, dist / 3, w / 3, dist / 3);
-      if (i) { const v = base + i * 2; idx.push(v - 2, v, v - 1, v - 1, v, v + 1); }
+      if (i) { const v = base + i * 2; idx.push(v - 2, v - 1, v, v - 1, v + 1, v); }        // wound to face up
       const k = key(Math.floor(x / SC), Math.floor(z / SC)); (cells.get(k) || cells.set(k, []).get(k)).push(x, z, hw);
     });
   };
@@ -577,6 +579,14 @@ if (real && real.osm.roads && real.osm.roads.length) {
     for (const p of pts) { const n = nearRoad(p[0], p[1]); if (n && n.d < 2.6) flush(); else run.push(p); }     // the ridden road is drawn already
     flush();
   }
+  // give-way lines across the mouth of each side road, just off the edge of the ridden road
+  for (const [w, run] of mouths) {
+    for (let k = 0; k < run.length - 1; k++) {
+      const n = nearRoad(run[k][0], run[k][1]); if (!n || n.d < 4.6) continue;
+      const [x, z] = run[k], [x2, z2] = run[k + 1], a = Math.atan2(z2 - z, x2 - x), y = n.d < 30 ? n.y - 0.04 + 0.03 : meshH(x, z) + 0.23;
+      giveWay.push([x, z, a, w, Math.max(y, meshH(x, z) + 0.23)]); break;
+    }
+  }
   // how far a point is from the edge of the nearest side road (99 when none is close)
   sideRoads.d = (x, z) => {
     const cx = Math.floor(x / SC), cz = Math.floor(z / SC); let best = 99;
@@ -591,7 +601,35 @@ if (real && real.osm.roads && real.osm.roads.length) {
   const map = imgTex(imgAsphalt, true);
   const lanes = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map, color: 0xb9b9bd, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
   lanes.receiveShadow = true; scene.add(lanes);
+  const paint = new THREE.MeshStandardMaterial({ color: 0xdedbd0, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 });
+  if (giveWay.length) {                            // a double broken line: 0.6 m dashes, 0.3 m gaps
+    const dash = new THREE.PlaneGeometry(0.6, 0.15).rotateX(-Math.PI / 2), list = [];
+    for (const [x, z, a, w, y] of giveWay) for (const off of [0, 0.35]) for (let u = -w / 2 + 0.4; u <= w / 2 - 0.3; u += 0.9) {
+      const nx = -Math.sin(a), nz = Math.cos(a);
+      list.push([x + Math.cos(a) * off + nx * u, y, z + Math.sin(a) * off + nz * u, a + Math.PI / 2]);
+    }
+    const im = new THREE.InstancedMesh(dash, paint, list.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new V3(0, 1, 0);
+    list.forEach(([x, y, z, a], i) => im.setMatrixAt(i, m4.compose(new V3(x, y, z), q.setFromAxisAngle(up, -a), new V3(1, 1, 1))));
+    im.receiveShadow = true; scene.add(im); st0.giveWay = giveWay.length;
+  }
+  sideRoads.paint = paint;
   st0.sideRoadKm = +(idx.length / 6 * 4 / 1000).toFixed(1);
+}
+
+/* ---------- roundabouts (real courses): a painted dome for each mini roundabout, a kerbed grass island for the big ones ---------- */
+if (real && ((real.osm.minis || []).length || (real.osm.rings || []).length)) {
+  const surface = (x, z) => { const n = nearRoad(x, z); return n && n.d < 7 ? n.y - 0.04 : meshH(x, z) + 0.2; };
+  const paint = sideRoads.paint || new THREE.MeshStandardMaterial({ color: 0xdedbd0, roughness: 0.7 });
+  for (const [x, z] of real.osm.minis || []) {
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(1.9, 24, 6, 0, Math.PI * 2, 0, 0.5).scale(1, 0.16, 1).translate(0, -1.9 * 0.16 * Math.cos(0.5), 0), paint);
+    dome.position.set(x, surface(x, z) + 0.01, z); dome.receiveShadow = true; scene.add(dome);
+  }
+  const grassTop = new THREE.MeshStandardMaterial({ color: 0x4f6b2a, roughness: 1 }), kerb = new THREE.MeshStandardMaterial({ color: 0xb8b4aa, roughness: 0.9 });
+  for (const [x, z, r] of real.osm.rings || []) {
+    const isle = new THREE.Mesh(new THREE.CylinderGeometry(r, r + 0.15, 0.35, 40, 1), [kerb, grassTop, grassTop]);
+    isle.position.set(x, surface(x, z) + 0.1, z); isle.castShadow = isle.receiveShadow = true; scene.add(isle);
+  }
+  st0.roundabouts = [(real.osm.minis || []).length, (real.osm.rings || []).length];
 }
 
 /* ---------- grass along the verge (chunks, only the near ones are drawn) ---------- */
@@ -1464,7 +1502,7 @@ addEventListener('resize', () => {
 const START = !real ? 0 : COURSES[COURSE].start === 'south' ? P.reduce((b, p, i) => p.z > P[b].z ? i : b, 0) * LEN / N : COURSES[COURSE].start;
 const st = { s: START, v: 6, power: 220, target: 220, dist: 0, trainer: false, cadence: 0, cadAt: 0 };
 const erg = { on: false, holding: false, watts: 0 };       // filled in by the workout section below
-window.ride = st; st.haze = hazeCol; st.built = st0;
+window.ride = st; st.haze = hazeCol; st.built = st0; st.scene = scene; st.renderer = renderer; st.camera = camera; st.P = P;     // for checking
 st.goNear = (x, z) => { let b = 0, bd = 1e12; for (let i = 0; i < N; i++) { const d = (P[i].x - x) ** 2 + (P[i].z - z) ** 2; if (d < bd) { bd = d; b = i; } } st.s = Math.max(0, b * LEN / N - 60); return Math.round(Math.sqrt(bd)); };   // for checking: ride to the road nearest a point
 st.weather = (n, i) => setWeather(n, i);
 const skip = m => { st.s = (((st.s + m) % LEN) + LEN) % LEN; };
@@ -2053,6 +2091,7 @@ function tick() {
   if (first) { first = false; $('loading').style.opacity = 0; setTimeout(() => $('loading').remove(), 900); }
   requestAnimationFrame(tick);
 }
+st.frame = tick;           // for checking: draw a frame by hand when the page is in the background
 tick();
 </script>
 </body>

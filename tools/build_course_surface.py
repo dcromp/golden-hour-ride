@@ -25,6 +25,7 @@ ns = {'math': math, 'os': os, 'struct': struct, 'time': time, 'urllib': urllib, 
       'COV': 'df4e3ec3-315e-48aa-aaaf-b5ae74d7b2bb__Lidar_Composite_Elevation_FZ_DSM_1m'}
 os.makedirs(ns['CACHE'], exist_ok=True)
 exec(src[src.index('def get('):src.index('def to_bng')] + src[src.index('def read_tiff'):src.index('# ---- route')], ns)
+exec(src[src.index('def to_bng'):src.index('def read_tiff')], ns); to_bng = ns['to_bng']
 
 REACH, TILE, RES = 160, 500, 1            # survey the strip this far either side of the road, at 1 m
 surf = ns['Grids'](TILE, RES)
@@ -84,6 +85,84 @@ for px, pz in line[::2]:
             if d < coarse.get((i, j), 1e9): coarse[(i, j)] = d
 road_far = lambda x, z: coarse.get((round(x / GC), round(z / GC)), 1e9)
 road_all = lambda x, z: math.sqrt(min((px - x) ** 2 + (pz - z) ** 2 for px, pz in road))
+
+# ---- the ridden road's width and markings, every road control point (15 m)
+# Width: the usual width for the road's class (or OSM's width/lanes tags), narrowed to fit between whatever the lidar
+# finds standing beside it (hedges, walls, buildings) with a verge of at least 0.6 m. Markings follow the Traffic Signs
+# Manual, chapter 5: no centre line under 5.5 m; diagram 1008 (2 m mark, 4 m gap) at 40 mph or less, 1008.1 (3 m, 6 m)
+# above; edge lines (1012.1) on unlit classified roads above 40 mph. [width m, centre 0/1/2, edge 0/1, mph]
+CLASS_W = {'trunk': 7.3, 'primary': 7.3, 'secondary': 6.4, 'tertiary': 5.8, 'unclassified': 4.6, 'residential': 5.5, 'living_street': 4.5, 'service': 3.5, 'track': 3.0}
+CLASS_MPH = {'residential': 30, 'living_street': 20, 'service': 20}
+ways = []
+for e in json.load(open(f'tools/.cache/osm_roads_{KEY}.json')).get('elements', []):
+    t = e.get('tags', {})
+    if e.get('type') != 'way' or 'geometry' not in e or t.get('highway', '').replace('_link', '') not in CLASS_W: continue
+    pts = [(E - cE, -(N - cN)) for E, N in (to_bng(p['lat'], p['lon']) for p in e['geometry'])]
+    ways.append((t, pts))
+whash = {}
+for k, (t, pts) in enumerate(ways):
+    for (ax, az), (bx, bz) in zip(pts, pts[1:]):
+        n = max(1, math.ceil(math.hypot(bx - ax, bz - az) / 4))
+        for j in range(n + 1):
+            x, z = ax + (bx - ax) * j / n, az + (bz - az) * j / n; whash.setdefault((math.floor(x / 20), math.floor(z / 20)), []).append((x, z, k))
+def way_at(x, z):
+    best = (15 ** 2, None)
+    for i in (-1, 0, 1):
+        for j in (-1, 0, 1):
+            for px, pz, k in whash.get((math.floor(x / 20) + i, math.floor(z / 20) + j), ()):
+                d = (px - x) ** 2 + (pz - z) ** 2
+                if d < best[0]: best = (d, k)
+    return ways[best[1]][0] if best[1] is not None else {}
+def num(v):
+    try: return float(str(v).split()[0].replace('m', ''))
+    except (ValueError, IndexError): return None
+
+tags, raw = [], []
+for k, (x, z) in enumerate(road):
+    a, b = road[k - 1], road[(k + 1) % len(road)]; L = math.hypot(b[0] - a[0], b[1] - a[1]) or 1; nx, nz = -(b[1] - a[1]) / L, (b[0] - a[0]) / L
+    tags.append(way_at(x, z))
+    clear = []
+    for side in (-1, 1):                  # how far out the first thing standing more than 0.9 m high is, each side
+        hit = 14
+        for step in range(3, 29):
+            o = step * 0.5; hv = above(x + nx * o * side, z + nz * o * side)
+            if hv is not None and hv > 0.9: hit = o; break
+        clear.append(hit)
+    raw.append(sum(clear) - 1.2)
+K = len(road); near = lambda k, r: [(k + d) % K for d in range(-r, r + 1)]
+def vote(k, f):                           # the commonest value over 150 m: a junction or a parked car doesn't change the road
+    c = {}
+    for j in near(k, 5): v = f(tags[j]); c[v] = c.get(v, 0) + 1
+    return max(c, key=c.get)
+prof = []
+for k in range(K):
+    cls = vote(k, lambda t: t.get('highway', 'unclassified').replace('_link', ''))
+    tw = vote(k, lambda t: num(t.get('width')) or (num(t.get('lanes')) and num(t.get('lanes')) * 3.1) or 0)
+    fit = sorted(raw[j] for j in near(k, 5))[7]                      # the room between hedges, ignoring the odd narrow spot
+    w = max(3.0, min(tw or CLASS_W.get(cls, 4.6), fit))
+    mph = vote(k, lambda t: num(t.get('maxspeed')) or 0) or CLASS_MPH.get(cls, 60)
+    nomark = vote(k, lambda t: t.get('lane_markings') == 'no')
+    unlit = vote(k, lambda t: t.get('lit') != 'yes')
+    prof.append([w, cls, mph, nomark, unlit])
+ws = [sum(prof[j][0] for j in near(k, 2)) / 5 for k in range(K)]     # a 75 m average, so the width eases in and out
+for k, p in enumerate(prof):
+    w, cls, mph, nomark, unlit = p; w = ws[k]
+    centre = 0 if w < 5.5 or nomark or cls in ('service', 'track', 'living_street') else (1 if mph <= 40 else 2)
+    edge = 1 if cls in ('trunk', 'primary', 'secondary', 'tertiary') and mph > 40 and unlit and w >= 5.5 else 0
+    prof[k] = [round(w, 2), centre, edge, int(mph)]
+ws = [p[0] for p in prof]
+hw_at = lambda x, z: 0                    # filled once the road's half-width can be looked up
+print('road width: %.1f to %.1f m (median %.1f); centre line on %d%%, edge lines on %d%% of the loop' % (min(ws), max(ws), sorted(ws)[len(ws) // 2], 100 * sum(1 for p in prof if p[1]) // len(prof), 100 * sum(1 for p in prof if p[2]) // len(prof)))
+whw = {}
+for (px, pz), p in zip(road, prof): whw.setdefault((math.floor(px / HC), math.floor(pz / HC)), []).append((px, pz, p[0] / 2))
+def hw_at(x, z):                          # half-width of the ridden road nearest a point
+    best = (1e9, 3.5)
+    for i in (-1, 0, 1):
+        for j in (-1, 0, 1):
+            for px, pz, h in whw.get((math.floor(x / HC) + i, math.floor(z / HC) + j), ()):
+                d = (px - x) ** 2 + (pz - z) ** 2
+                if d < best[0]: best = (d, h)
+    return best[1]
 
 # ---- buildings: OS footprints, cut into rectangles, each at its surveyed height
 def shp_polygons(path):
@@ -230,7 +309,7 @@ for (i, j), hgt in veg.items():
             if o > hgt or (o == hgt and (a, b) > (0, 0)): top = False; break
         if not top: break
     x, z = (i + 0.5) * B, (j + 0.5) * B
-    if top and road_near(x, z) > 4.6: trees.append([round(x, 1), round(z, 1), round(hgt, 1)])
+    if top and road_near(x, z) > hw_at(x, z) + 1.1: trees.append([round(x, 1), round(z, 1), round(hgt, 1)])
 
 HEDGE_REACH = 90; hedges = []
 low = {k: v for k, v in veg.items() if v < TREE}
@@ -241,7 +320,7 @@ for (i, j), hgt in low.items():
     if len(near) < 3: continue                                    # a stray reading, a parked car
     if all((i + a, j + b) in veg for a, b in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1))) and (i + j) % 2: continue      # thin out the middle of a thicket
     rd = road_near(x, z)
-    if rd < 4.3 or (rd > HEDGE_REACH): continue
+    if rd < hw_at(x, z) + 0.7 or (rd > HEDGE_REACH): continue
     sxx = sum(a * a for a, b in near); szz = sum(b * b for a, b in near); sxz = sum(a * b for a, b in near)
     ang = 0.5 * math.atan2(2 * sxz, sxx - szz)                    # the way the hedge runs here
     hedges += [round(x, 1), round(z, 1), round(ang, 2), round(min(hgt, 4.2), 1)]
@@ -251,7 +330,7 @@ print('trees %d, hedge pieces %d' % (len(trees), len(hedges) // 4))
 SEEN = REACH - 12
 osm['trees'] = [t for t in osm['trees'] if road_all(t[0], t[1]) > SEEN] + trees
 osm['lines'] = [l for l in osm['lines'] if l[4] != 0 or road_all((l[0] + l[2]) / 2, (l[1] + l[3]) / 2) > SEEN]
-osm['hedges'] = hedges; osm['surveyed'] = SEEN
+osm['hedges'] = hedges; osm['surveyed'] = SEEN; osm['roadw'] = prof
 osm['credit'] = ('Buildings: Ordnance Survey OpenMap Local, © Crown copyright and database right. ' if footprints else '') + 'Hedge, tree and building heights: Environment Agency LiDAR. Roads and woods © OpenStreetMap contributors.'
 open(f'assets/{KEY}_osm.js', 'w').write(f'window.RIDE_COURSES.{KEY}.osm = ' + json.dumps(osm, separators=(',', ':')) + ';\n')
 print(f'wrote assets/{KEY}_osm.js', os.path.getsize(f'assets/{KEY}_osm.js') // 1024, 'KB')

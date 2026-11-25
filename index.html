@@ -248,7 +248,7 @@ let real = null;
 if (COURSE !== 'valley') {
   $('loading').textContent = COURSES[COURSE].loading;
   const addScript = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('missing ' + src)); document.head.append(s); });
-  const DATA = 7;          // bump when the course files change, so browsers don't reuse an old copy
+  const DATA = 8;          // bump when the course files change, so browsers don't reuse an old copy
   await addScript(`assets/${COURSE}.js?v=${DATA}`);
   await addScript(`assets/${COURSE}_osm.js?v=${DATA}`).catch(() => {});          // buildings, woods and hedges are optional
   real = window.RIDE_COURSES[COURSE];
@@ -427,11 +427,23 @@ scene.add(terrain);
 
 /* ---------- road ---------- */
 const TILES = Math.round(LEN / 12);
+// The road's half-width and markings at every point. A course with surveyed widths (real.osm.roadw, one entry per road
+// control point: [width, centre line 0 none / 1 diagram 1008 / 2 diagram 1008.1, edge lines, mph]) narrows to its lanes;
+// otherwise the road is 7 m with the markings painted into its texture.
+const ROADW = real && real.osm.roadw && real.osm.roadw.length === ctrl.length ? real.osm.roadw : null;
+const HW = new Float32Array(N).fill(3.5), MARK = [];
+if (ROADW) {
+  const K = ROADW.length, raw = Float32Array.from({ length: N }, (_, i) => ROADW[Math.round(i / N * K) % K][0] / 2);
+  for (let i = 0; i < N; i++) { let a = 0; for (let d = -20; d <= 20; d++) a += raw[(i + d + N) % N]; HW[i] = a / 41; }      // eases over 60 m
+  for (let i = 0; i < N; i++) { const r = ROADW[Math.round(i / N * K) % K]; MARK.push({ centre: r[1], edge: r[2], mph: r[3] }); }
+}
+const hwAt = s => HW[Math.floor((((s % LEN) + LEN) % LEN) / LEN * N) % N];
+const off = (v, j) => typeof v === 'function' ? v(j) : v;
 function strip(offA, dyA, offB, dyB, uA, uB, vTiles) {
   const pos = new Float32Array((N + 1) * 6), uv = new Float32Array((N + 1) * 4), idx = new Uint32Array(N * 6);
   for (let i = 0; i <= N; i++) {
-    const j = i % N, p = P[j], r = R[j];
-    pos.set([p.x + r.x * offA, p.y + dyA, p.z + r.z * offA, p.x + r.x * offB, p.y + dyB, p.z + r.z * offB], i * 6);
+    const j = i % N, p = P[j], r = R[j], a = off(offA, j), b = off(offB, j);
+    pos.set([p.x + r.x * a, p.y + dyA, p.z + r.z * a, p.x + r.x * b, p.y + dyB, p.z + r.z * b], i * 6);
     uv.set([uA, i / N * vTiles, uB, i / N * vTiles], i * 4);
     if (i < N) idx.set([2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 1, 2 * i + 3, 2 * i + 2], i * 6);
   }
@@ -463,11 +475,26 @@ function asphaltTex() {
     for (let k = 0, n = 20 + rnd() * 50; k < n; k++) { a += (rnd() - 0.5) * 1.1; x += Math.cos(a) * 9; y += Math.sin(a) * 9; g.lineTo(x, y); }
     g.stroke();
   }
-  g.fillStyle = 'rgba(224,220,206,0.92)';              // paint
-  g.fillRect(36, 0, 16, Hh); g.fillRect(972, 0, 16, Hh); g.fillRect(505, 0, 14, Hh / 3);
-  for (let i = 0; i < 6000; i++) {                     // worn paint
-    const s = 1 + rnd() * 3;
-    g.fillStyle = 'rgba(72,72,76,0.7)'; g.fillRect([36, 972, 505][i % 3] + rnd() * 16, rnd() * Hh, s, s * (1 + rnd() * 3));
+  if (!ROADW) {
+    g.fillStyle = 'rgba(224,220,206,0.92)';              // paint
+    g.fillRect(36, 0, 16, Hh); g.fillRect(972, 0, 16, Hh); g.fillRect(505, 0, 14, Hh / 3);
+    for (let i = 0; i < 6000; i++) {                     // worn paint
+      const s = 1 + rnd() * 3;
+      g.fillStyle = 'rgba(72,72,76,0.7)'; g.fillRect([36, 972, 505][i % 3] + rnd() * 16, rnd() * Hh, s, s * (1 + rnd() * 3));
+    }
+  } else {
+    // an English lane: surface dressing (pale stone chippings), a gritty crown, and edges that crumble into the verge
+    for (let i = 0; i < 26000; i++) { const l = 120 + rnd() * 90 | 0; g.fillStyle = `rgba(${l},${l - 3},${l - 10},${0.18 + rnd() * 0.3})`; g.fillRect(rnd() * W, rnd() * Hh, 1.5 + rnd() * 2.5, 1.5 + rnd() * 2.5); }
+    const crown = g.createLinearGradient(W * 0.44, 0, W * 0.56, 0);
+    crown.addColorStop(0, 'rgba(150,145,130,0)'); crown.addColorStop(0.5, 'rgba(150,145,130,0.16)'); crown.addColorStop(1, 'rgba(150,145,130,0)');
+    g.fillStyle = crown; g.fillRect(W * 0.44, 0, W * 0.12, Hh);
+    for (const side of [0, 1]) for (let y = 0; y < Hh; y += 3) {
+      const bite = (Math.sin(y * 0.013 + side * 5) * 0.5 + 0.5) * 26 + rnd() * 18 + (rnd() < 0.04 ? 30 + rnd() * 40 : 0);
+      const x = side ? W - bite : 0;
+      g.fillStyle = rnd() < 0.55 ? `rgba(${60 + rnd() * 30 | 0},${72 + rnd() * 30 | 0},${34 + rnd() * 16 | 0},0.92)` : `rgba(${110 + rnd() * 40 | 0},${102 + rnd() * 36 | 0},${84 + rnd() * 30 | 0},0.9)`;
+      g.fillRect(x, y, bite, 3 + rnd() * 4);
+    }
+    { const y = rnd() * Hh, x = rnd() * W * 0.4; g.fillStyle = 'rgba(14,14,16,0.14)'; g.fillRect(x, y, W * 0.35, 60 + rnd() * 60); }      // one patch repair per stretch
   }
   if (XMAS) {                                          // snow ploughed to the edges, slush between the wheel tracks
     for (const [x0, x1] of [[0, 150], [W, W - 150]]) {
@@ -501,7 +528,7 @@ function wetTex() {   // roughness: mostly damp, with glassy standing water in t
 }
 const asphaltMap = asphaltTex();
 const asphaltNormal = imgTex(imgAsphaltN); asphaltNormal.repeat.set(7 / 3, 4);
-const road = new THREE.Mesh(strip(-3.5, 0, 3.5, 0, 0, 1, TILES),
+const road = new THREE.Mesh(strip(j => -HW[j], 0, j => HW[j], 0, 0, 1, TILES),
   new THREE.MeshStandardMaterial({ map: asphaltMap, roughnessMap: wetTex(), roughness: 1, metalness: 0, normalMap: asphaltNormal, normalScale: new THREE.Vector2(1.2, 1.2), envMapIntensity: 1 }));
 road.receiveShadow = true;
 scene.add(road);
@@ -538,7 +565,7 @@ function shoulderTex() {
   return t;
 }
 const shoulderMat = new THREE.MeshStandardMaterial({ map: shoulderTex(), roughness: 1 });
-for (const g of [strip(-6.8, -0.72, -3.5, 0.005, 1, 0, LEN / 5), strip(3.5, 0.005, 6.8, -0.72, 0, 1, LEN / 5)]) {
+for (const g of [strip(j => -HW[j] - 3.3, -0.72, j => -HW[j], 0.005, 1, 0, LEN / 5), strip(j => HW[j], 0.005, j => HW[j] + 3.3, -0.72, 0, 1, LEN / 5)]) {
   const m = new THREE.Mesh(g, shoulderMat); m.receiveShadow = true; scene.add(m);
 }
 
@@ -552,9 +579,9 @@ if (real && real.osm.roads && real.osm.roads.length) {
     const k = smooth(3.5, 18, n.d);
     return (n.y - 0.04) * (1 - k) + g * k;
   };
-  const mouths = [], giveWay = [];
+  const mouths = [], giveWay = [], mouthAt = sideRoads.mouthAt = [], mouthSide = sideRoads.mouthSide = {};
   const ribbon = (run, w) => {
-    for (const end of [run, run.slice().reverse()]) { const n = nearRoad(end[0][0], end[0][1]); if (n && n.d < 8) mouths.push([w, end]); }
+    for (const end of [run, run.slice().reverse()]) { const n = nearRoad(end[0][0], end[0][1]); if (n && n.d < HW[n.i] + 4.5) mouths.push([w, end]); }
     const hw = w / 2, base = pos.length / 3; let dist = 0;
     run.forEach(([x, z], i) => {
       const a = run[Math.max(0, i - 1)], b = run[Math.min(run.length - 1, i + 1)], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / L, nz = (b[0] - a[0]) / L;
@@ -576,13 +603,14 @@ if (real && real.osm.roads && real.osm.roads.length) {
     pts.push([flat[flat.length - 2], flat[flat.length - 1]]);
     let run = [];
     const flush = () => { if (run.length > 1) ribbon(run, w); run = []; };
-    for (const p of pts) { const n = nearRoad(p[0], p[1]); if (n && n.d < 2.6) flush(); else run.push(p); }     // the ridden road is drawn already
+    for (const p of pts) { const n = nearRoad(p[0], p[1]); if (n && n.d < HW[n.i] - 0.9) flush(); else run.push(p); }     // the ridden road is drawn already
     flush();
   }
   // give-way lines across the mouth of each side road, just off the edge of the ridden road
   for (const [w, run] of mouths) {
     for (let k = 0; k < run.length - 1; k++) {
-      const n = nearRoad(run[k][0], run[k][1]); if (!n || n.d < 4.6) continue;
+      const n = nearRoad(run[k][0], run[k][1]); if (!n || n.d < HW[n.i] + 1.1) continue;
+      mouthAt.push(n.i); mouthSide[n.i] = Math.sign(n.side) || 1;
       const [x, z] = run[k], [x2, z2] = run[k + 1], a = Math.atan2(z2 - z, x2 - x), y = n.d < 30 ? n.y - 0.04 + 0.03 : meshH(x, z) + 0.23;
       giveWay.push([x, z, a, w, Math.max(y, meshH(x, z) + 0.23)]); break;
     }
@@ -616,9 +644,98 @@ if (real && real.osm.roads && real.osm.roads.length) {
   st0.sideRoadKm = +(idx.length / 6 * 4 / 1000).toFixed(1);
 }
 
+/* ---------- road markings (courses with surveyed widths), after the Traffic Signs Manual chapter 5 ----------
+   Centre line 1008 (2 m mark, 4 m gap) at 40 mph or less, 1008.1 (3 m, 6 m) above, none where the road is under 5.5 m.
+   Warning line 1004 (4 m, 2 m) or 1004.1 (6 m, 3 m) in place of it approaching junctions and sharp bends. Edge lines
+   1012.1, 225 mm in from the edge, broken across side-road mouths. SLOW (1024) before sharp bends above 40 mph. Road studs:
+   white on the centre line, red on the left edge, where there are edge lines. */
+if (ROADW) {
+  const junction = new Uint8Array(N), bend = new Float32Array(N);
+  for (const i of sideRoads.mouthAt || []) for (let d = -30; d <= 30; d++) junction[(i + d + N) % N] = 1;          // ±45 m of a side road
+  for (let i = 0; i < N; i++) {                                    // how sharply the road turns over the next 30 m
+    const a = T[(i - 10 + N) % N], b = T[(i + 10) % N], ang = Math.acos(Math.max(-1, Math.min(1, a.x * b.x + a.z * b.z)));
+    bend[i] = ang > 0.01 ? 30 / ang : 1e4;                         // radius, metres
+  }
+  const hazard = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    const reach = MARK[i].mph > 40 ? 50 : 34;                      // warning lines this many samples (×1.5 m) either side
+    if (junction[i] || bend[i] < (MARK[i].mph > 40 ? 90 : 45)) for (let d = -reach; d <= reach; d++) hazard[(i + d + N) % N] = 1;
+  }
+  const pos = [], idx = [], pose2 = mkPose();
+  const quadRun = (s0, s1, o, w, lift = 0.018) => {               // one painted mark from s0 to s1, o metres right of the centre
+    const n = Math.max(1, Math.ceil((s1 - s0) / 0.75)), base = pos.length / 3;
+    for (let k = 0; k <= n; k++) {
+      at(s0 + (s1 - s0) * k / n, pose2); const oo = typeof o === 'function' ? o(s0 + (s1 - s0) * k / n) : o;
+      for (const e of [oo - w / 2, oo + w / 2]) pos.push(pose2.p.x + pose2.r.x * e, pose2.p.y + lift, pose2.p.z + pose2.r.z * e);
+      if (k) { const v = base + k * 2; idx.push(v - 2, v - 1, v, v - 1, v + 1, v); }
+    }
+  };
+  const idxAt = s => Math.floor((((s % LEN) + LEN) % LEN) / LEN * N) % N;
+  // centre and warning lines
+  for (let s = 0; s < LEN;) {
+    const i = idxAt(s), m = MARK[i];
+    if (!m.centre) { s += 1.5; continue; }
+    const fast = m.centre === 2, warn = hazard[i], [mk, gap] = warn ? (fast ? [6, 3] : [4, 2]) : (fast ? [3, 6] : [2, 4]);
+    quadRun(s, Math.min(s + mk, LEN), 0, 0.1); s += mk + gap;
+  }
+  // edge lines, broken at side roads
+  for (const side of [-1, 1]) {
+    let s = 0;
+    while (s < LEN) {
+      const i = idxAt(s);
+      if (!MARK[i].edge || junction[i] && sideRoads.mouthSide && sideRoads.mouthSide[i] === side) { s += 1.5; continue; }
+      const e = s; while (s < LEN && s - e < 12 && MARK[idxAt(s)].edge) s += 0.75;
+      if (s > e) quadRun(e, s, x => side * (hwAt(x) - 0.275), 0.1);
+    }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  const paintMat = new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+  const lines = new THREE.Mesh(g, paintMat); lines.receiveShadow = true; scene.add(lines);
+
+  // SLOW before sharp bends on faster roads, for traffic from either direction
+  const slowTex = (() => { const [c, x] = canvas2d(256, 512); x.fillStyle = '#fff'; x.font = 'bold 150px Arial Narrow, Arial, sans-serif'; x.textAlign = 'center';
+    x.save(); x.scale(1, 2.6); x.fillText('SLOW', 128, 170); x.restore(); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = MAX_ANISO; return t; })();
+  const slowMat = new THREE.MeshStandardMaterial({ map: slowTex, transparent: true, alphaTest: 0.3, roughness: 0.6, color: 0xe8e4d8, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
+  const slowPos = [], slowUv = [], slowIdx = [];
+  const slow = (s0, dir) => {                                     // 2.8 m legend in the lane of traffic heading dir (+1 with the ride)
+    const hw = hwAt(s0), o = -dir * hw / 2, w = Math.min(2.2, hw * 0.8), base = slowPos.length / 3;
+    for (let k = 0; k <= 4; k++) {
+      const s = s0 + dir * 2.8 * k / 4; at(s, pose2);
+      for (const e of [-1, 1]) { const oo = o + e * w / 2 * dir; slowPos.push(pose2.p.x + pose2.r.x * oo, pose2.p.y + 0.02, pose2.p.z + pose2.r.z * oo); slowUv.push(e < 0 ? 0 : 1, k / 4); }
+      if (k) { const v = base + k * 2; slowIdx.push(v - 2, v - 1, v, v - 1, v + 1, v); }
+    }
+  };
+  let nSlow = 0;
+  for (let i = 0; i < N;) {
+    if (MARK[i].mph > 40 && bend[i] < 60 && hwAt(i * LEN / N) >= 2.3) {
+      let j = i; while (j < N && bend[j] < 60) j++;
+      slow((i - 40) * LEN / N, 1); slow((j + 40) * LEN / N, -1); nSlow += 2; i = j + 60;
+    } else i++;
+  }
+  if (slowPos.length) {
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(slowPos, 3)); sg.setAttribute('uv', new THREE.Float32BufferAttribute(slowUv, 2)); sg.setIndex(slowIdx); sg.computeVertexNormals();
+    const sm = new THREE.Mesh(sg, slowMat); sm.receiveShadow = true; scene.add(sm);
+  }
+
+  // road studs (cat's eyes): every 18 m on the centre line of the faster roads, red on the left edge beside edge lines
+  const studs = [];
+  for (let s = 0; s < LEN; s += 18) { const m = MARK[idxAt(s)]; if (m.centre === 2) studs.push([s, 0, 0]); if (m.edge && !junction[idxAt(s)]) studs.push([s, -1, 1]); }
+  if (studs.length) {
+    const geo = new THREE.BoxGeometry(0.1, 0.03, 0.14), cols = [new THREE.Color(0xf4f4ee), new THREE.Color(0xd0201a)];
+    const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.2 }), studs.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new V3(0, 1, 0);
+    studs.forEach(([s, side, c], k) => {
+      at(s, pose2); const o = side ? side * (hwAt(s) - 0.45) : 0.18;
+      im.setMatrixAt(k, m4.compose(new V3(pose2.p.x + pose2.r.x * o, pose2.p.y + 0.012, pose2.p.z + pose2.r.z * o), q.setFromAxisAngle(up, -Math.atan2(pose2.t.z, pose2.t.x)), new V3(1, 1, 1)));
+      im.setColorAt(k, cols[c]);
+    });
+    im.receiveShadow = true; scene.add(im);
+  }
+  st0.markings = { centreKm: +(MARK.filter(m => m.centre).length * 1.5 / 1000).toFixed(1), slow: nSlow, studs: studs.length };
+}
+
 /* ---------- roundabouts (real courses): a painted dome for each mini roundabout, a kerbed grass island for the big ones ---------- */
 if (real && ((real.osm.minis || []).length || (real.osm.rings || []).length)) {
-  const surface = (x, z) => { const n = nearRoad(x, z); return n && n.d < 7 ? n.y - 0.04 : meshH(x, z) + 0.2; };
+  const surface = (x, z) => { const n = nearRoad(x, z); return n && n.d < HW[n.i] + 3.5 ? n.y - 0.04 : meshH(x, z) + 0.2; };
   const paint = sideRoads.paint || new THREE.MeshStandardMaterial({ color: 0xdedbd0, roughness: 0.7 });
   for (const [x, z] of real.osm.minis || []) {
     const dome = new THREE.Mesh(new THREE.SphereGeometry(1.9, 24, 6, 0, Math.PI * 2, 0, 0.5).scale(1, 0.16, 1).translate(0, -1.9 * 0.16 * Math.cos(0.5), 0), paint);
@@ -669,10 +786,10 @@ const chunks = [];
   const build = c0 => {
     const mesh = new THREE.InstancedMesh(tuftGeo, grassMat, COUNT);
     for (let k = 0; k < COUNT; k++) {
-      const i = c0 + Math.floor(rnd() * PER), side = rnd() < 0.5 ? -1 : 1, d = 3.55 + Math.pow(rnd(), 1.6) * 12.5, j = (rnd() - 0.5) * 1.5;
+      const i = c0 + Math.floor(rnd() * PER), side = rnd() < 0.5 ? -1 : 1, hw = HW[i], d = hw + 0.05 + Math.pow(rnd(), 1.6) * 12.5, j = (rnd() - 0.5) * 1.5;
       const x = P[i].x + R[i].x * side * d + T[i].x * j, z = P[i].z + R[i].z * side * d + T[i].z * j;
       let y = meshH(x, z);
-      if (d < 6.8) y = Math.max(y, P[i].y + T[i].y * j - 0.72 * (d - 3.5) / 3.3);
+      if (d < hw + 3.3) y = Math.max(y, P[i].y + T[i].y * j - 0.72 * (d - hw) / 3.3);
       const tall = 0.28 + rnd() * 0.5 + (d > 5 ? rnd() * 0.25 : 0);
       ps.set(x, y - 0.03, z); q.setFromAxisAngle(up, rnd() * 6.283); sc.set(0.5 + rnd() * 0.5, tall, 0.5 + rnd() * 0.5);
       if (sideRoads.d(x, z) < 0.4) sc.setScalar(0);              // no grass growing through a junction
@@ -996,7 +1113,7 @@ if (XMAS) {
   const built = new Set(), cellKey = (x, z) => Math.floor(x / 10) * 4096 + Math.floor(z / 10);
   if (real) {
     for (const [bx, bz, w] of real.osm.buildings) for (let dx = -w / 2 - 4; dx <= w / 2 + 4; dx += 10) for (let dz = -w / 2 - 4; dz <= w / 2 + 4; dz += 10) built.add(cellKey(bx + dx, bz + dz));
-    for (const [x, z, tall] of real.osm.trees) { const nr = nearRoad(x, z); if ((!nr || nr.d > 5.5) && sideRoads.d(x, z) > 1) spots.push([x, meshH(x, z), z, tall]); }     // mapped or surveyed trees, at their own height where it is known
+    for (const [x, z, tall] of real.osm.trees) { const nr = nearRoad(x, z); if ((!nr || nr.d > HW[nr.i] + 2) && sideRoads.d(x, z) > 1) spots.push([x, meshH(x, z), z, tall]); }     // mapped or surveyed trees, at their own height where it is known
   }
   for (let n = 0; n < (real ? 320000 : 70000) && spots.length < (real ? 26000 : 7000); n++) {
     const x = (rnd() - 0.5) * TS * 0.78, z = (rnd() - 0.5) * TS * 0.78, nr = nearRoad(x, z), d = nr ? nr.d : 999;
@@ -2007,7 +2124,8 @@ const drawMap = (() => {
 })();
 
 /* ---------- ride ---------- */
-const MASS = 80, LANE = -1.75, clock = new THREE.Clock();
+const MASS = 80, clock = new THREE.Clock();
+const laneAt = s => { const hw = hwAt(s); return -Math.max(hw - 1.2, hw / 2); };          // left of centre: about 1.2 m in from the edge
 const pose = mkPose(), ahead = mkPose(), probe = mkPose(), look = new V3(), sunNdc = new V3(), fwd = new V3();
 let lean = 0, phase = 0, grade = 0, huT = 0, first = true;
 // scenery mode's weather, in order, and how many seconds each one stays
@@ -2042,9 +2160,10 @@ function tick() {
   const effort = Math.min(1, st.power / 300);
   phase += dt * Math.PI * 2 * (st.power > 5 ? 60 + Math.min(40, st.power / 8) : 0) / 60;
   const sway = Math.sin(phase);
+  const LANE = laneAt(st.s);
   camera.position.copy(pose.p).addScaledVector(pose.r, LANE + sway * 0.004 * effort);
   camera.position.y += 1.52;
-  look.copy(ahead.p).addScaledVector(ahead.r, LANE); look.y += 0.3;
+  look.copy(ahead.p).addScaledVector(ahead.r, laneAt(st.s + 9)); look.y += 0.3;
   camera.lookAt(look);
   camera.rotateZ(-lean);
   const fov = 62 + Math.min(st.v, 20) * 0.75;
